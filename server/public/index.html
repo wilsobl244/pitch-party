@@ -1,0 +1,672 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pitch Party — Animated</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Clean, rounded sans (easy on the eyes) -->
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#0e0e1a; --panel:#16162a; --panel-2:#1c1c34; --border:#2a2a4a;
+      --text:#e8e8ff; --muted:#aab; --accent:#ff5db1; --accent-2:#7df3ff; --ok:#7cff9d;
+      --shadow: 0 10px 28px rgba(0,0,0,.35);
+      --r:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background:
+        radial-gradient(1200px 800px at 10% -10%,rgba(255,93,177,.15),transparent 40%),
+        radial-gradient(900px 700px at 110% 10%,rgba(125,243,255,.12),transparent 40%),
+        var(--bg);
+      color:var(--text);
+      /* Simple, friendly sans (with solid fallbacks incl. Calibri where available) */
+      font-family: 'Manrope', ui-sans-serif, system-ui, "Segoe UI", Calibri, Arial, sans-serif;
+      font-size: 16.5px;
+      line-height: 1.35;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      font-feature-settings: "liga","kern","tnum","ss01";
+    }
+
+    .wrap{max-width:1100px;margin:0 auto;padding:24px;animation:fadeIn .5s ease both}
+    h1{letter-spacing:.3px;margin:0 0 6px;font-weight:800;font-size:36px}
+    .muted{color:var(--muted);font-size:13.5px}
+
+    .card{
+      background: linear-gradient(180deg,var(--panel),var(--panel-2));
+      border:1px solid var(--border); border-radius:var(--r); padding:16px; margin:12px 0;
+      box-shadow:var(--shadow); position:relative; overflow:hidden;
+    }
+    .card::after{
+      content:""; position:absolute; inset:0 0 auto 0; height:1px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);
+      opacity:.6;
+    }
+
+    input,button,select{
+      padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+      background:#0b0b18;color:var(--text); outline:none;
+      transition:transform .08s ease, box-shadow .18s ease,border-color .2s;
+      font-family: inherit;
+      font-size: 16px;
+    }
+    input:focus,select:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(255,93,177,.15)}
+    button{cursor:pointer}
+    button:hover{transform:translateY(-1px); box-shadow:0 6px 18px rgba(0,0,0,.35)}
+    button:active{transform:translateY(0)}
+
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .pill{
+      border:1px solid var(--border); border-radius:999px; padding:4px 12px; color:var(--muted);
+      background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(0,0,0,.1));
+      font-size: 14.5px;
+      font-weight:600;
+      letter-spacing:.2px;
+    }
+
+    /* Host name: big, bold, readable */
+    .pill.host-name{
+      font-weight:800;
+      font-size:22px;
+      color:var(--text);
+      border-color:var(--accent);
+      box-shadow:0 0 0 2px rgba(255,93,177,.25) inset, 0 8px 22px rgba(255,93,177,.18);
+      letter-spacing:.2px;
+    }
+    .host-badge{
+      border-color:var(--accent);
+      color:#ffd1ea;
+      font-weight:800;
+    }
+
+    .hand{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:10px}
+    .grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px}
+    .cardlet{
+      background:linear-gradient(180deg,#14142a,#121226);
+      border:1px solid var(--border); border-radius:12px; min-height:94px;
+      display:flex;align-items:center;justify-content:center;text-align:center; cursor:pointer;
+      transform:translateZ(0); transition:transform .12s ease, box-shadow .2s ease, border-color .15s ease;
+      box-shadow:0 6px 12px rgba(0,0,0,.25);
+      animation:floatIn .4s ease both;
+      padding:10px;
+      font-weight:600;
+    }
+    .cardlet.small{min-height:60px;font-size:14.5px}
+    .cardlet:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 12px 26px rgba(0,0,0,.35)}
+    .cardlet.sel{
+      border-color:var(--accent); box-shadow:0 8px 28px rgba(255,93,177,.25), 0 0 0 2px rgba(255,93,177,.25) inset;
+      animation:pop .18s ease;
+    }
+
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px solid var(--border);font-size:14.5px}
+    th{color:var(--muted);text-align:left}
+    tr.reveal{animation:fadeUp .28s ease both}
+    a.code{color:#ffd1ea;cursor:pointer;text-decoration:none}
+    a.code:hover{text-decoration:underline}
+
+    /* section show/hide */
+    .panel{display:none;opacity:0;transform:translateY(8px);pointer-events:none}
+    .panel.show{display:block;opacity:1;transform:none;pointer-events:auto;transition:opacity .25s ease, transform .25s ease}
+
+    /* winner highlight */
+    .winner{box-shadow:0 0 0 2px var(--ok) inset, 0 8px 28px rgba(124,255,157,.25) !important; animation:glow 1.4s ease infinite}
+
+    /* keyframes */
+    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    @keyframes floatIn{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:none}}
+    @keyframes pop{0%{transform:scale(.98)}60%{transform:scale(1.03)}100%{transform:scale(1)}}
+    @keyframes glow{0%,100%{filter:drop-shadow(0 0 0 rgba(124,255,157,0))}50%{filter:drop-shadow(0 0 12px rgba(124,255,157,.35))}}
+
+    /* subtle shimmer divider on cards */
+    .card .shine{position:absolute; inset:auto -40% 0 -40%; height:2px; background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent)}
+
+    .section-title{margin:12px 0 6px}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pitch Party</h1>
+  <p class="muted">Progressive reveal mode — each candidate takes the stage, reveals traits one-by-one, then gets a twist.</p>
+
+  <!-- Auth + Create/Join -->
+  <div class="card panel show" id="auth">
+    <div class="shine"></div>
+    <div class="row">
+      <input id="name" placeholder="your name"/>
+      <button id="saveName">Save</button>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <button id="createRoom" disabled>Create Public Room</button>
+      <label><input type="checkbox" id="privateToggle"> Private?</label>
+      <input id="createPass" placeholder="passcode (if private)" style="width:180px" />
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <input id="code" placeholder="ROOM" style="width:90px;text-transform:uppercase"/>
+      <input id="joinPass" placeholder="passcode (if required)" style="width:180px"/>
+      <button id="join" disabled>Join</button>
+    </div>
+
+    <p class="muted">Room: <span id="roomPill" class="pill">—</span></p>
+  </div>
+
+  <!-- Room Directory -->
+  <div class="card panel show" id="directory">
+    <div class="shine"></div>
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h3 style="margin:0;">Public Rooms</h3>
+      <div class="row">
+        <button id="refreshRooms">Refresh</button>
+        <span class="muted">Click a code to fill the join box</span>
+      </div>
+    </div>
+    <table id="roomsTable">
+      <thead><tr><th>Code</th><th>Players</th><th>Phase</th><th>Round</th><th>Created</th></tr></thead>
+      <tbody id="roomsBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Lobby -->
+  <div class="card panel" id="lobby">
+    <div class="shine"></div>
+    <h3>Lobby</h3>
+    <div id="players"></div>
+    <div class="row" style="margin-top:8px;">
+      <button id="start" style="display:none;">Start Game</button>
+      <span id="wait" class="muted">Waiting for host…</span>
+    </div>
+  </div>
+
+  <!-- Game -->
+  <div class="card panel" id="game">
+    <div class="shine"></div>
+    <div class="row" style="justify-content:space-between;align-items:flex-end;gap:16px;">
+      <div>
+        <div class="muted">Current Job</div>
+        <div id="job" style="font-weight:800;font-size:18px;">—</div>
+        <div class="muted" id="interviewerTag" style="margin-top:4px;"></div>
+      </div>
+      <div class="row">
+        <span class="pill">Round <span id="round">1</span></span>
+        <span class="pill">Phase <span id="phase">—</span></span>
+      </div>
+    </div>
+
+    <!-- INTERVIEWER: pick job -->
+    <div class="section" id="pickJobSec" style="margin-top:12px;display:none;">
+      <h3 class="section-title">Pick a Job</h3>
+      <div id="jobOptions" class="grid"></div>
+    </div>
+
+    <!-- CANDIDATE: choose traits -->
+    <div class="section" id="handSec" style="margin-top:12px;display:none;">
+      <h3 class="section-title">Choose 3 Traits (kept hidden)</h3>
+      <div id="hand" class="hand"></div>
+      <div class="row" style="margin-top:8px;">
+        <button id="submit" disabled>Lock 3 Traits</button>
+        <span id="status" class="muted">not submitted</span>
+      </div>
+    </div>
+
+    <!-- REVEAL STAGE -->
+    <div class="section" id="revealSec" style="margin-top:12px;display:none;">
+      <h3 class="section-title">On Stage</h3>
+      <div id="stageWrap" class="card" style="padding:16px;">
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <div>
+            <div class="muted">Candidate</div>
+            <div id="stageName" style="font-weight:800;font-size:18px">—</div>
+          </div>
+          <div class="row">
+            <span class="pill">Revealed <span id="revealedCount">0</span>/3</span>
+          </div>
+        </div>
+        <div class="row" id="revealedRow" style="margin-top:8px;"></div>
+
+        <!-- Stage twist row (shows immediately when assigned) -->
+        <div class="row" id="stageTwistRow" style="margin-top:6px;display:none;">
+          <span class="pill" style="border-color:var(--accent-2);color:var(--accent-2)">Twist</span>
+          <span id="stageTwistText" class="pill"></span>
+        </div>
+
+        <!-- Current candidate's private tray to pick the next reveal -->
+        <div id="revealChoicesWrap" style="margin-top:10px;display:none;">
+          <div class="muted">Pick a trait to reveal</div>
+          <div id="revealChoices" class="hand"></div>
+        </div>
+
+        <!-- Interviewer controls for twist + end turn -->
+        <div id="stageControls" class="row" style="margin-top:12px;display:none;align-items:center;gap:12px;">
+          <div class="card" id="twistBankCard" style="min-width:260px;">
+            <div class="muted">Twist Bank</div>
+            <div id="twistBank" class="grid"></div>
+          </div>
+          <button id="assignTwistBtn" disabled>Assign Twist</button>
+          <button id="endTurnBtn" disabled>End Turn</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lineup (finished candidates stay visible) -->
+    <h3 class="section-title" style="margin-top:14px;">Lineup</h3>
+    <div id="subs"></div>
+
+    <div class="row" style="margin-top:8px;">
+      <button id="next" style="display:none;">Next Round</button>
+    </div>
+  </div>
+</div>
+
+<!-- tiny confetti canvas -->
+<canvas id="confetti" style="position:fixed;inset:0;pointer-events:none"></canvas>
+
+<script>
+  const socket = io();
+
+  // elements
+  const auth = document.getElementById('auth');
+  const directory = document.getElementById('directory');
+  const lobby = document.getElementById('lobby');
+  const game = document.getElementById('game');
+
+  const nameI = document.getElementById('name');
+  const saveBtn = document.getElementById('saveName');
+  const createBtn = document.getElementById('createRoom');
+  const privToggle = document.getElementById('privateToggle');
+  const createPass = document.getElementById('createPass');
+  const joinI = document.getElementById('code');
+  const joinPass = document.getElementById('joinPass');
+  const joinBtn = document.getElementById('join');
+  const roomPill = document.getElementById('roomPill');
+
+  const roomsBody = document.getElementById('roomsBody');
+  const refreshBtn = document.getElementById('refreshRooms');
+
+  const playersDiv = document.getElementById('players');
+  const startBtn = document.getElementById('start');
+  const waitSpan = document.getElementById('wait');
+
+  const jobEl = document.getElementById('job');
+  const roundEl = document.getElementById('round');
+  const phaseEl = document.getElementById('phase');
+  const interviewerTag = document.getElementById('interviewerTag');
+
+  const pickJobSec = document.getElementById('pickJobSec');
+  const jobOptionsEl = document.getElementById('jobOptions');
+
+  const handSec = document.getElementById('handSec');
+  const handEl = document.getElementById('hand');
+  const submitBtn = document.getElementById('submit');
+  const statusEl = document.getElementById('status');
+
+  const revealSec = document.getElementById('revealSec');
+  const stageName = document.getElementById('stageName');
+  const revealedCount = document.getElementById('revealedCount');
+  const revealedRow = document.getElementById('revealedRow');
+  const stageTwistRow = document.getElementById('stageTwistRow');
+  const stageTwistText = document.getElementById('stageTwistText');
+  const revealChoicesWrap = document.getElementById('revealChoicesWrap');
+  const revealChoices = document.getElementById('revealChoices');
+  const stageControls = document.getElementById('stageControls');
+  const twistBankCard = document.getElementById('twistBankCard');
+  const twistBankEl = document.getElementById('twistBank');
+  const assignTwistBtn = document.getElementById('assignTwistBtn');
+  const endTurnBtn = document.getElementById('endTurnBtn');
+
+  const subsEl = document.getElementById('subs');
+  const nextBtn = document.getElementById('next');
+
+  let myIsHost = false;
+  let selected = new Set(); // pre-selection of 3 traits
+  let selectedTwist = null; // interviewer selection
+
+  // helper: panel transitions
+  const show = el => { el.classList.add('show'); el.style.display = 'block'; }
+  const hide = el => { el.classList.remove('show'); el.style.display = 'none'; }
+
+  // NEW: helper to recompute Assign button enabled/disabled state
+  function updateAssignState(revealedLen, twistForCurrent){
+    assignTwistBtn.disabled = !(revealedLen === 3 && !twistForCurrent && !!selectedTwist);
+  }
+
+  // auth + create/join
+  saveBtn.onclick = () => {
+    const n = nameI.value.trim();
+    if (!n) return alert('Enter a name');
+    socket.emit('setName', n);
+    createBtn.disabled = false; joinBtn.disabled = false;
+    saveBtn.animate([{transform:'scale(1)'},{transform:'scale(1.06)'},{transform:'scale(1)'}], {duration:180});
+  };
+
+  createBtn.onclick = () => {
+    const isPrivate = privToggle.checked;
+    const passcode = createPass.value.trim();
+    socket.emit('createRoom', { isPrivate, passcode });
+    createBtn.blur();
+  };
+
+  joinBtn.onclick = () => {
+    socket.emit('joinRoom', { room: joinI.value.trim().toUpperCase(), passcode: joinPass.value.trim() });
+    joinBtn.blur();
+  };
+
+  refreshBtn.onclick = () => socket.emit('listRooms');
+
+  socket.on('createError', (msg) => alert(msg));
+  socket.on('joinError', (msg) => alert(msg));
+
+  socket.on('roomCreated', ({room}) => {
+    roomPill.textContent = room; myIsHost = true;
+    hide(auth); hide(directory); show(lobby);
+    startBtn.style.display='inline-block'; waitSpan.style.display='none';
+  });
+
+  socket.on('joined', ({room, isHost}) => {
+    roomPill.textContent = room; myIsHost = !!isHost;
+    hide(auth); hide(directory); show(lobby);
+    if (myIsHost){ startBtn.style.display='inline-block'; waitSpan.style.display='none'; }
+  });
+
+  // directory (public rooms)
+  socket.on('roomList', (list) => {
+    const tbody = roomsBody;
+    tbody.innerHTML = '';
+    if (!list || !list.length) {
+      const tr = document.createElement('tr');
+      tr.className = 'reveal';
+      tr.innerHTML = `<td colspan="5" class="muted">No public rooms yet. Create one!</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+    list.forEach((r,i) => {
+      const tr = document.createElement('tr'); tr.className = 'reveal'; tr.style.animationDelay = `${i*40}ms`;
+      const created = new Date(r.createdAt).toLocaleTimeString();
+      tr.innerHTML = `
+        <td><a class="code">${r.code}</a></td>
+        <td>${r.players}</td>
+        <td>${r.phase}</td>
+        <td>${r.round}</td>
+        <td class="muted">${created}</td>
+      `;
+      tr.querySelector('a.code').onclick = () => { joinI.value = r.code; joinI.focus(); joinI.animate([{opacity:.6},{opacity:1}],{duration:200}); };
+      tbody.appendChild(tr);
+    });
+  });
+
+  // ask for list on load, and every 8s
+  socket.emit('listRooms');
+  setInterval(()=>socket.emit('listRooms'), 8000);
+
+  // lobby + game flow
+  startBtn.onclick = () => socket.emit('startGame');
+  submitBtn.onclick = () => {
+    if (selected.size !== 3) return alert('Pick exactly 3 traits');
+    submitBtn.disabled = true;
+    submitBtn.animate([{transform:'scale(1)'},{transform:'scale(.97)'},{transform:'scale(1)'}], {duration:160});
+    socket.emit('submitTraits', Array.from(selected));
+  };
+  nextBtn.onclick = () => socket.emit('nextRound');
+
+  socket.on('lobbyState', ({players}) => {
+    playersDiv.innerHTML = '';
+    Object.values(players).forEach((p,i)=>{
+      const div = document.createElement('div');
+      div.className='row';
+      div.style.margin='4px 0';
+      div.style.animation = 'fadeUp .28s ease both';
+      div.style.animationDelay = `${i*50}ms`;
+      // Host name bigger & bold with crown
+      const namePillClass = p.isHost ? 'pill host-name' : 'pill';
+      const crown = p.isHost ? ' 👑' : '';
+      div.innerHTML = `
+        <span class="${namePillClass}">${p.name}${crown}</span>
+        <span class="muted">score: ${p.score??0}</span>
+        ${p.isHost?'<span class="pill host-badge">HOST</span>':''}
+      `;
+      playersDiv.appendChild(div);
+    });
+  });
+
+  socket.on('gameState', (s) => {
+    hide(lobby); show(game);
+
+    jobEl.textContent = s.currentJob || '—';
+    roundEl.textContent = s.round || 1;
+    phaseEl.textContent = s.phase || '—';
+    interviewerTag.textContent = s.isInterviewer ? 'You are the interviewer' : `Interviewer: ${s.interviewerName || '—'}`;
+
+    // default hide sections
+    pickJobSec.style.display = 'none';
+    handSec.style.display = 'none';
+    revealSec.style.display = 'none';
+
+    // INTERVIEWER FLOW
+    if (s.isInterviewer) {
+      if (s.phase === 'chooseJob') {
+        pickJobSec.style.display = 'block';
+        renderJobOptions(s.jobOptions || []);
+      }
+      if (s.phase === 'reveal') {
+        revealSec.style.display = 'block';
+        renderStage(s);
+      }
+      nextBtn.style.display = (s.phase === 'judge') ? 'inline-block' : 'none';
+    } else {
+      // CANDIDATE FLOW
+      if (s.phase === 'chooseTraits') {
+        handSec.style.display = 'block';
+        renderHand(s.hand || [], s.submitted);
+      }
+      if (s.phase === 'reveal') {
+        revealSec.style.display = 'block';
+        renderStage(s);
+      }
+      nextBtn.style.display = 'none';
+    }
+
+    statusEl.textContent = s.submitted ? 'submitted!' : 'not submitted';
+    renderLineup(s);
+  });
+
+  function renderJobOptions(opts){
+    jobOptionsEl.innerHTML = '';
+    (opts || []).forEach((job,i)=>{
+      const d = document.createElement('div');
+      d.className = 'cardlet small';
+      d.textContent = job;
+      d.style.animationDelay = `${i*40}ms`;
+      d.onclick = () => socket.emit('pickJob', job);
+      jobOptionsEl.appendChild(d);
+    });
+  }
+
+  function renderHand(hand, submitted){
+    handEl.innerHTML=''; selected.clear();
+    (hand||[]).forEach((t,i)=>{
+      const d=document.createElement('div');
+      d.className='cardlet'; d.textContent=t; d.style.animationDelay = `${i*40}ms`;
+      d.onclick=()=>{
+        if(submitted) return;
+        if(d.classList.contains('sel')){ d.classList.remove('sel'); selected.delete(t); }
+        else{
+          if(selected.size===3) return; d.classList.add('sel'); selected.add(t);
+        }
+        submitBtn.disabled = !(selected.size===3);
+      };
+      handEl.appendChild(d);
+    });
+  }
+
+  function pill(text){ const s=document.createElement('span'); s.className='pill'; s.textContent=text; return s; }
+
+  function renderStage(s){
+    const currentId = s.currentCandidateId;
+    const me = s.myId;
+    const subs = s.submissions || {};
+    const cur = subs[currentId];
+
+    stageName.textContent = cur ? cur.name : '—';
+    // revealed traits for current
+    const revealed = (s.revealed && s.revealed[currentId]) || [];
+    revealedCount.textContent = revealed.length;
+
+    revealedRow.innerHTML = '';
+    revealed.forEach(t => revealedRow.appendChild(pill(t)));
+
+    // stage twist (show immediately when assigned)
+    const twistForCurrent = s.currentCandidateTwist || (cur && cur.twist) || null;
+    if (twistForCurrent) {
+      stageTwistText.textContent = twistForCurrent;
+      stageTwistRow.style.display = 'flex';
+    } else {
+      stageTwistRow.style.display = 'none';
+      stageTwistText.textContent = '';
+    }
+
+    // candidate private choices
+    if (me === currentId && Array.isArray(s.myAllTraits)){
+      const remaining = s.myAllTraits.filter(t => !revealed.includes(t));
+      revealChoicesWrap.style.display = remaining.length ? 'block' : 'none';
+      revealChoices.innerHTML = '';
+      remaining.forEach((t,i)=>{
+        const d = document.createElement('div'); d.className = 'cardlet'; d.textContent = t; d.style.animationDelay = `${i*35}ms`;
+        d.onclick = () => socket.emit('revealTrait', t);
+        revealChoices.appendChild(d);
+      });
+    } else {
+      revealChoicesWrap.style.display = 'none';
+    }
+
+    // interviewer controls
+    if (s.isInterviewer){
+      stageControls.style.display = 'flex';
+
+      // Hide the twist bank and assign button AFTER a twist is assigned to this candidate
+      const bankVisible = Array.isArray(s.twistBank) && s.twistBank.length && !twistForCurrent;
+      twistBankCard.style.display = bankVisible ? 'block' : 'none';
+      assignTwistBtn.style.display = bankVisible ? 'inline-block' : 'none';
+
+      if (bankVisible) {
+        renderTwistBank(s.twistBank || [], revealed.length, twistForCurrent);
+      } else {
+        twistBankEl.innerHTML = '';
+        selectedTwist = null;
+      }
+
+      assignTwistBtn.onclick = () => {
+        if (!selectedTwist) return;
+        socket.emit('assignTwist', { targetId: currentId, twist: selectedTwist });
+      };
+
+      const canEnd = !!twistForCurrent;
+      endTurnBtn.disabled = !canEnd;
+      endTurnBtn.onclick = () => socket.emit('endTurn');
+
+      updateAssignState(revealed.length, twistForCurrent);
+    } else {
+      stageControls.style.display = 'none';
+    }
+  }
+
+  function renderTwistBank(bank, revealedLen = 0, twistForCurrent = null){
+    twistBankEl.innerHTML = '';
+    selectedTwist = null;
+    (bank||[]).forEach((tw,i)=>{
+      const d = document.createElement('div');
+      d.className='cardlet small';
+      d.textContent = tw;
+      d.style.animationDelay = `${i*35}ms`;
+      d.onclick = () => {
+        const was = d.classList.contains('sel');
+        [...twistBankEl.children].forEach(c=>c.classList.remove('sel'));
+        if (!was){ d.classList.add('sel'); selectedTwist = tw; } else { selectedTwist = null; }
+        updateAssignState(revealedLen, twistForCurrent);
+      };
+      twistBankEl.appendChild(d);
+    });
+    updateAssignState(revealedLen, twistForCurrent);
+  }
+
+  function renderLineup(s){
+    subsEl.innerHTML='';
+    const entries = Object.values(s.submissions||{});
+    if (!entries.length){ subsEl.innerHTML = '<div class="muted">No submissions yet.</div>'; return; }
+
+    entries.forEach((x,i)=>{
+      const wrap=document.createElement('div');
+      wrap.className='card';
+      wrap.style.animation='fadeUp .28s both';
+      wrap.style.animationDelay=`${i*60}ms`;
+      const isWinner = !!x.winner;
+
+      const twistText = x.twist ? `<div class="row" style="margin-top:6px;"><span class="pill" style="border-color:var(--accent-2);color:var(--accent-2)">Twist</span><span class="pill">${x.twist}</span></div>` : '';
+
+      wrap.innerHTML = `
+        <div class="row" style="justify-content:space-between;">
+          <b>${x.name}</b>
+          <span class="muted">${isWinner?'🏆 winner':''}</span>
+        </div>
+        <div class="row" style="margin-top:6px;">${(x.traits||[]).map(c=>`<span class=\"pill\">${c}</span>`).join(' ')}</div>
+        ${twistText}
+      `;
+
+      if(s.isInterviewer && s.phase==='judge' && !x.winner){
+        const b=document.createElement('button'); b.textContent='Pick Winner';
+        b.onclick=()=>socket.emit('selectWinner', x.id);
+        wrap.appendChild(b);
+      }
+      if(isWinner){ wrap.classList.add('winner'); boomConfetti(); }
+      subsEl.appendChild(wrap);
+    });
+  }
+
+  // light confetti
+  const canvas = document.getElementById('confetti');
+  const ctx = canvas.getContext('2d');
+  let bits = []; let rafId;
+  function resize(){ canvas.width=innerWidth; canvas.height=innerHeight; }
+  addEventListener('resize', resize); resize();
+  function boomConfetti(){
+    for(let i=0;i<120;i++){
+      bits.push({
+        x: canvas.width/2 + (Math.random()-0.5)*220,
+        y: canvas.height/3,
+        vx: (Math.random()-0.5)*6,
+        vy: -Math.random()*6 - 2,
+        s: Math.random()*6+3,
+        r: Math.random()*Math.PI,
+        vr: (Math.random()-0.5)*.3,
+        life: 120+Math.random()*60
+      });
+    }
+    if(!rafId) tick();
+  }
+  function tick(){
+    rafId = requestAnimationFrame(tick);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save();
+    bits.forEach(b=>{
+      b.life--; if(b.life<=0) return;
+      b.x+=b.vx; b.y+=b.vy; b.vy+=0.12; b.r+=b.vr;
+      ctx.save();
+      ctx.translate(b.x,b.y); ctx.rotate(b.r);
+      ctx.fillStyle = Math.random() < .5 ? "rgba(255,93,177,.9)" : "rgba(125,243,255,.9)";
+      ctx.fillRect(-b.s/2,-b.s/2,b.s,b.s);
+      ctx.restore();
+    });
+    bits = bits.filter(b=>b.life>0 && b.y<canvas.height+20);
+    if(!bits.length){ cancelAnimationFrame(rafId); rafId=null; }
+    ctx.restore();
+  }
+</script>
+</body>
+</html>
