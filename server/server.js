@@ -88,7 +88,6 @@ function baseJobs() {
   ]);
 }
 
-
 function baseTraits() {
   return shuffle([
     "Blue",
@@ -98,8 +97,12 @@ function baseTraits() {
     "Reads 12 words per minute",
     "Redditor",
     "Momma’s boy",
+    "Pirate",
+    "Liberal",
     "63mm Pupillary Distance",
     "Cross-Eyed",
+    "Really good at Mario Kart",
+
     "Talks about their Funko Pop Collection",
     "Takes Pride in their Feet Fetish",
     "Won 8th grade Spelling Bee",
@@ -141,13 +144,51 @@ function baseTraits() {
     "Gives immaculate high-fives",
     "Parallel parks like a video game speedrun",
     "Can assemble IKEA without a single spare piece",
-    "Makes playlists for every mood"
+    "Makes playlists for every mood",
+    "Is flexible",
+    "Is in a toxic relationship with their stepdad",
+    "Can only speak in questions",
+    "Is 4 years old",
+    "Only fucks with BBWS",
+    "Fat Bitch Pussy Connossieur",
+    "'Does someone smell that?' (hitting the stanky leg)",
+    "Advocate for Chinese feet binding in 2025",
+    "Supports Eugenics",
+    "Jolly Funny Looking Gummy Bear",
+    "Plays League competitively",
+    "Was Emperor Mao Zedong's Last Dancer",
+    "Certified Munch",
+    "Slimy",
+    "Acts if 9/11 JUST happened",
+    "Bred Gorillas for 4 years",
+    "Just found out Steve Irwin died",
+    "Is convinced Doja Cat is their wife",
+    "Is handicapped but they roll around in a doggy wheelchair",
+    "Talks like Ben Shapiro",
+    "Anti-Vax",
+    "Is in the middle of e-sexing their online partner",
+    "Is currently in an intense text argument with their toxic boyfriend",
+    "Just found out their grandmother died",
+    "Really good at Go Fish",
+    "Has a 2 inch penis but knows how to use it",
+    "Has huge boobs but no ass",
+    "Knows how to change oil in a car",
+    "Unclogs pipes",
+    "Ran a loom business elementary school",
+    "A little Racist"
+
+    
   ]);
 }
 
 function baseTwists() {
   return shuffle([
     "Emotionally Unavailable",
+    "Registered Sex Offender",
+    "Major in Business",
+    "Schizophrenic",
+    "Watched every single Game Theory FNAF Lore Video",
+    "Secretly just farted right now",
     "Has Nightvision",
     "Can only count up to 10",
     "Extremely overweight",
@@ -167,20 +208,43 @@ function baseTwists() {
     "Holding in a fart right now",
     "Thinks Fanboy and ChumChum is better than The Amazing World of Gumball",
     "Must rhyme while talking",
-    "Physically Violent"
+    "Physically Violent",
+    "is a groomer",
+    "Has a foot fetish",
+    "Nose grows longer when they lie",
+    "Cant stop applying chapstick",
+    "Really Sweaty like REALLY Sweaty",
+    "Has a picture of Nicki Minaj in their wallet",
+    "Is really bad at Fortnite",
+    "Is actually a dog",
+    "Just found out about the Holocaust",
+    "Is handicapped",
+    "Swag",
+    "Really Loves Game Theory",
+    "Sleeper activation code 'Garfield' makes them act like a cat",
+    "Part-time Neko Girl",
+    "Very Racist",
+    "Orthodox Catholic",
+     "Streams on Twitch but only gets 3 viewers",
+     "Believes the earth is flat"
+
+    
+    
+    
+    
   ]);
 }
-
 
 // ---------- emits ----------
 function emitLobby(code) {
   const R = rooms.get(code);
-  if (!R) return;
+  if (!R) return; // room gone
+  const players = R.players || {};
   io.to(code).emit("lobbyState", {
     players: Object.fromEntries(
-      Object.entries(R.players).map(([id, p]) => [
+      Object.entries(players).map(([id, p]) => [
         id,
-        { name: p.name, isHost: id === R.hostId, score: p.score },
+        { name: p?.name ?? "—", isHost: id === R.hostId, score: p?.score ?? 0 },
       ])
     ),
   });
@@ -190,15 +254,22 @@ function emitGameState(code, toId = null) {
   const R = rooms.get(code);
   if (!R) return;
 
+  const players = R.players || {};
+  const submissions = R.submissions || {};
+  const revealed = R.revealed || {};
+  const twistsAssigned = R.twistsAssigned || {};
+  const jobOptions = R.jobOptions || [];
+  const twistBank = Array.isArray(R.twistBank) ? R.twistBank : [];
+
   // Public submissions show ONLY revealed traits
   const pubSubmissions = Object.fromEntries(
-    Object.entries(R.submissions).map(([pid, s]) => {
-      const revealedForPid = (R.revealed?.[pid] || []);
+    Object.entries(submissions).map(([pid, s]) => {
+      const revealedForPid = revealed[pid] || [];
       return [pid, {
         id: pid,
-        name: R.players[pid]?.name || "Left",
+        name: players[pid]?.name || "Left",
         traits: revealedForPid,
-        twist: R.twistsAssigned[pid] || null,
+        twist: twistsAssigned[pid] || null,
         winner: !!s.winner,
       }];
     })
@@ -206,8 +277,8 @@ function emitGameState(code, toId = null) {
 
   // Per-stage convenience flags so client can toggle UI instantly
   const curId = R.currentCandidateId || null;
-  const curRevealedCount = curId ? (R.revealed?.[curId] || []).length : 0;
-  const curTwist = curId ? (R.twistsAssigned[curId] || null) : null;
+  const curRevealedCount = curId ? (revealed[curId] || []).length : 0;
+  const curTwist = curId ? (twistsAssigned[curId] || null) : null;
   const canAssignTwist = (R.phase === "reveal") && !!curId && curRevealedCount === 3 && !curTwist;
   const canEndTurn = (R.phase === "reveal") && !!curId && !!curTwist;
 
@@ -216,41 +287,41 @@ function emitGameState(code, toId = null) {
     phase: R.phase,
     round: R.round,
     interviewerId: R.interviewerId,
-    interviewerName: R.players[R.interviewerId]?.name || "—",
+    interviewerName: players[R.interviewerId]?.name || "—",
     currentJob: R.currentJob,
     submissions: pubSubmissions,
     players: Object.fromEntries(
-      Object.entries(R.players).map(([id, p]) => [id, { name: p.name, score: p.score }])
+      Object.entries(players).map(([id, p]) => [id, { name: p?.name ?? "—", score: p?.score ?? 0 }])
     ),
     // spotlight fields for progressive reveal
     currentCandidateId: curId,
     currentCandidateTwist: curTwist, // ensure stage can show twist immediately
     canAssignTwist,
     canEndTurn,
-    revealed: R.revealed || {},
+    revealed,
   };
 
   const send = (id) => {
     const isInterviewer = id === R.interviewerId;
-    const me = R.players[id];
-    const isCurrent = id === R.currentCandidateId;
+    const me = players[id];
+    const isCurrent = id === curId;
 
     io.to(id).emit("gameState", {
       ...pub,
       myId: id,
       isInterviewer,
-      jobOptions: (isInterviewer && R.phase === "chooseJob") ? R.jobOptions : undefined,
+      jobOptions: (isInterviewer && R.phase === "chooseJob") ? jobOptions : undefined,
       // Hide the twist bank from interviewer as soon as the current candidate has a twist (or empty)
-      twistBank: (isInterviewer && R.phase === "reveal" && !curTwist && (R.twistBank?.length > 0)) ? R.twistBank : undefined,
+      twistBank: (isInterviewer && R.phase === "reveal" && !curTwist && twistBank.length > 0) ? twistBank : undefined,
       hand: (R.phase === "chooseTraits" && !isInterviewer) ? (me?.hand || []) : [],
       // Give the on-stage candidate their full locked traits to choose reveal order
-      myAllTraits: (isCurrent ? (R.submissions[id]?.traits || []) : undefined),
-      submitted: !!R.submissions[id],
+      myAllTraits: (isCurrent ? (submissions[id]?.traits || []) : undefined),
+      submitted: !!submissions[id],
     });
   };
 
   if (toId) send(toId);
-  else Object.keys(R.players).forEach(send);
+  else Object.keys(players).forEach(send);
 }
 
 // ---------- round prep ----------
@@ -348,6 +419,8 @@ setInterval(() => {
 // ---------- sockets ----------
 io.on("connection", (socket) => {
   socket.data.name = `Player-${socket.id.slice(0, 4)}`;
+  // send initial room list so lobby has content immediately
+  socket.emit("roomList", getRoomList());
 
   function leaveOtherGameRooms() {
     for (const r of socket.rooms) {
@@ -682,7 +755,7 @@ io.on("connection", (socket) => {
 
       io.to(code).emit("chat", { name: "SYSTEM", msg: `${who} left.` });
 
-      // empty room
+      // empty room — delete then continue so we don't emit to a deleted room
       if (Object.keys(R.players).length === 0) {
         rooms.delete(code);
         broadcastRoomList();
@@ -730,6 +803,4 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Pitch Party server on http://localhost:${PORT}`);
-});
+server.listen(PORT, () => console.log(`Pitch Party server on ${PORT}`));
