@@ -16,25 +16,6 @@ const io = new Server(server, {
 
 app.use(express.static(path.join(__dirname, "public")));
 
-// ---------- global error guards ----------
-process.on("uncaughtException", (err) => {
-  console.error("[uncaughtException]", err);
-});
-process.on("unhandledRejection", (err) => {
-  console.error("[unhandledRejection]", err);
-});
-
-// helper: wrap socket handlers so a throw never kills the process
-function onSafe(socket, event, fn) {
-  socket.on(event, async (...args) => {
-    try { await fn(...args); }
-    catch (err) {
-      console.error(`[handler error] ${event}:`, err);
-      socket.emit("serverError", `Server error in "${event}". Try again.`);
-    }
-  });
-}
-
 // ---------- config / guards ----------
 const MAX_ROOMS = 200;
 const MAX_PLAYERS_PER_ROOM = 12;
@@ -44,7 +25,6 @@ const CREATE_JOIN_COOLDOWN_MS = 1500;
 const ACTION_COOLDOWN_MS = 250; // generic small guard
 const ROOM_IDLE_MS = 45 * 60 * 1000; // 45 min since last activity
 const ROOM_LIST_LIMIT = 50;
-const REVEAL_IDLE_MS = 45_000; // auto-advance if reveal stalls
 
 const rooms = new Map(); // Map<roomCode, RoomState>
 const lastActionAt = new Map(); // Map<socketId, number>
@@ -52,24 +32,12 @@ const lastChatAt = new Map(); // Map<socketId, number>
 const lastCreateJoinAt = new Map(); // Map<socketId, number>
 
 function now() { return Date.now(); }
-
 function tooSoon(map, id, cooldown) {
   const t = map.get(id) || 0;
-  const delta = now() - t;
-  if (delta < cooldown) return { ok:false, wait: cooldown - delta };
+  if (now() - t < cooldown) return true;
   map.set(id, now());
-  return { ok:true, wait:0 };
-}
-
-function guardRate(socket, map, cooldown, tag) {
-  const r = tooSoon(map, socket.id, cooldown);
-  if (!r.ok) {
-    socket.emit("rateLimited", { action: tag, retryMs: r.wait });
-    return true; // blocked
-  }
   return false;
 }
-
 function touchRoom(R) { R.lastActivityAt = now(); }
 function esc(s) { return String(s).replace(/[<>]/g, m => (m === "<" ? "&lt;" : "&gt;")).replace(/[\x00-\x1F]/g, ""); }
 function hashPass(s) { return crypto.createHash("sha256").update(String(s)).digest("hex"); }
@@ -85,62 +53,214 @@ const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
 
 function baseJobs() {
   return shuffle([
-    "Firefighter","Author","Chef","Teacher","Game Designer","Comedian","English Professor","Pilot","Barista",
-    "Astronaut","Zookeeper","Professional Gamer","AI Ethics Officer","Cat Cafe Manager","Middleschool Principal",
-    "Lifeguard","Wedding Planner","Food Truck Chef",
+    "Firefighter",
+    "Author",
+    "Chef",
+    "Teacher",
+    "Game Designer",
+    "Comedian",
+    "English Professor",
+    "Pilot",
+    "Barista",
+    "Astronaut",
+    "Zookeeper",
+    "Professional Gamer",
+    "AI Ethics Officer",
+    "Cat Cafe Manager",
+    "Middleschool Principal",
+    "Lifeguard",
+    "Wedding Planner",
+    "Food Truck Chef", 
     // new ones
-    "Fortune Cookie Writer","Pornstar","Doctor","Baker","Pastry Chef","Rat Exterminator","Plumber","The President",
-    "Governor of California","Children's Book Author","Smiling Friend","Therapist","Molecular Biologist","Discord Mod",
-    "1st Grade Teacher","Dermatologist","Dentist","Physical Trainer","Rocket Scientist","The Front Man from Squid Games",
-    "MukBanger","Crime Scene Cleaner","Private Investigator"
+    "Fortune Cookie Writer",
+    "Pornstar",
+    "Doctor",
+    "Baker",
+    "Pastry Chef",
+    "Rat Exterminator",
+    "Plumber",
+    "The President",
+    "Governor of California",
+    "Children's Book Author",
+    "Smiling Friend",
+    "Therapist",
+    "Molecular Biologist",
+    "Discord Mod",
+    "1st Grade Teacher",
+    "Dermatologist",
+    "Dentist",
+    "Physical Trainer",
+    "Rocket Scientist",
+    "The Front Man from Squid Games",
+    "MukBanger",
+    "Crime Scene Cleaner",
+    "Private Investigator"
   ]);
 }
 
 function baseTraits() {
   return shuffle([
-    "Blue","Goon Lord","5’9","Fat","Reads 12 words per minute","Redditor","Momma’s boy","Pirate","Liberal",
-    "63mm Pupillary Distance","Cross-Eyed","Really good at Mario Kart",
-    "Talks about their Funko Pop Collection","Takes Pride in their Feet Fetish","Won 8th grade Spelling Bee",
-    "Doesn’t shut up about Undertale","Helped their friend move one time","Collects Rocks",
-    "Has a tick every 5 seconds making them go “cakooo”","Fakes deep voice","Has a shiny bald head",
-    "Talks like moist critical","2nd loser in Mr.Beast’s “Last to take their hand off the Lamborghini” Challenge",
-    "Excel & Word certified","Has an associates degree","Is the Boy with Striped Pajamas","Licensed to chill",
-    "Roger from American Dad","Catered Rebecca Sugar’s Wedding","Has an original Steven Universe Crystal Gem OC",
-    "If they were green they would die","Lois Griffin","Extremely Ripped","Uncontrollable Gas","6’3","Feminist","Liberal",
-    "Extremely Politically Correct","Fastest kid in their 5th grade class","Major in Psychology","4.0 GPA in Middle School",
-    "Really loves Sonic The Hedgehog","Blunt","Always holding in a sneeze","Extremely strong grip","Reads Feminist Literature",
-    // wholesome
-    "Brings snacks","Certified plant whisperer","Gives immaculate high-fives",
-    "Parallel parks like a video game speedrun","Can assemble IKEA without a single spare piece","Takes everything literally",
-    "Is flexible","Is in a toxic relationship with their stepdad","Can only speak in questions","Is 4 years old",
-    "Only fucks with BBWS","Fat Bitch Pussy Connossieur","'Does someone smell that?' (hitting the stanky leg)",
-    "Advocate for Chinese feet binding in 2025","Supports Eugenics","Jolly Funny Looking Gummy Bear",
-    "Plays League competitively","Was Emperor Mao Zedong's Last Dancer","Certified Munch","Slimy",
-    "Acts if 9/11 JUST happened","Bred Gorillas for 4 years","Just found out Steve Irwin died",
-    "Is convinced Doja Cat is their wife","Is handicapped but they roll around in a doggy wheelchair","Talks like Ben Shapiro",
-    "Anti-Vax","Is in the middle of e-sexing their online partner","Is currently in an intense text argument with their toxic boyfriend",
-    "Just found out their grandmother died","Really good at Go Fish","Has a 2 inch penis but knows how to use it",
-    "Has huge boobs but no ass","Knows how to change oil in a car","Unclogs pipes","Ran a loom business in elementary school",
-    "Has an ex wife named Shannon who took the kids","Divorced and wife took the kids","A little Racist","Knows FNAF lore by heart",
-    "Literally Gargamel from the Smurfs","Indian Accent","Filipino Accent","Japanese Accent","Is Firelord Ozai","Packing 8 inches",
-    "Is French","Supplied low income neighborhoods with crack","3 inch cock"
+    "Blue",
+    "Goon Lord",
+    "5’9",
+    "Fat",
+    "Reads 12 words per minute",
+    "Redditor",
+    "Momma’s boy",
+    "Pirate",
+    "Liberal",
+    "63mm Pupillary Distance",
+    "Cross-Eyed",
+    "Really good at Mario Kart",
+
+    "Talks about their Funko Pop Collection",
+    "Takes Pride in their Feet Fetish",
+    "Won 8th grade Spelling Bee",
+    "Doesn’t shut up about Undertale",
+    "Helped their friend move one time",
+    "Collects Rocks",
+    "Has a tick every 5 seconds making them go “cakooo”",
+    "Fakes deep voice",
+    "Has a shiny bald head",
+    "Talks like moist critical",
+    "2nd loser in Mr.Beast’s “Last to take their hand off the Lamborghini” Challenge",
+    "Excel & Word certified",
+    "Has an associates degree",
+    "Is the Boy with Striped Pajamas",
+    "Licensed to chill",
+    "Roger from American Dad",
+    "Catered Rebecca Sugar’s Wedding",
+    "Has an original Steven Universe Crystal Gem OC",
+
+    "If they were green they would die",
+    "Lois Griffin",
+    "Extremely Ripped",
+    "Uncontrollable Gas",
+    "6’3",
+    "Feminist",
+    "Liberal",
+    "Extremely Politically Correct",
+    "Fastest kid in their 5th grade class",
+    "Major in Psychology",
+    "4.0 GPA in Middle School",
+    "Really loves Sonic The Hedgehog",
+    "Blunt",
+    "Always holding in a sneeze",
+    "Extremely strong grip",
+    "Reads Feminist Literature",
+    // keep a few wholesome ones in the mix
+    "Brings snacks",
+    "Certified plant whisperer",
+    "Gives immaculate high-fives",
+    "Parallel parks like a video game speedrun",
+    "Can assemble IKEA without a single spare piece",
+    "Takes everything literally",
+    "Is flexible",
+    "Is in a toxic relationship with their stepdad",
+    "Can only speak in questions",
+    "Is 4 years old",
+    "Only fucks with BBWS",
+    "Fat Bitch Pussy Connossieur",
+    "'Does someone smell that?' (hitting the stanky leg)",
+    "Advocate for Chinese feet binding in 2025",
+    "Supports Eugenics",
+    "Jolly Funny Looking Gummy Bear",
+    "Plays League competitively",
+    "Was Emperor Mao Zedong's Last Dancer",
+    "Certified Munch",
+    "Slimy",
+    "Acts if 9/11 JUST happened",
+    "Bred Gorillas for 4 years",
+    "Just found out Steve Irwin died",
+    "Is convinced Doja Cat is their wife",
+    "Is handicapped but they roll around in a doggy wheelchair",
+    "Talks like Ben Shapiro",
+    "Anti-Vax",
+    "Is in the middle of e-sexing their online partner",
+    "Is currently in an intense text argument with their toxic boyfriend",
+    "Just found out their grandmother died",
+    "Really good at Go Fish",
+    "Has a 2 inch penis but knows how to use it",
+    "Has huge boobs but no ass",
+    "Knows how to change oil in a car",
+    "Unclogs pipes",
+    "Ran a loom business in elementary school",
+    "Has an ex wife named Shannon who took the kids",
+    "Divorced and wife took the kids",
+    "A little Racist",
+    "Knows FNAF lore by heart",
+    "Literally Gargamel from the Smurfs",
+    "Indian Accent",
+    "Filipino Accent",
+    "Japanese Accent",
+    "Is Firelord Ozai",
+    "Packing 8 inches",
+    "Is French",
+    "Supplied low income neighborhoods with crack",
+    "3 inch cock"
+    
+    
+
+    
   ]);
 }
 
 function baseTwists() {
   return shuffle([
-    "Emotionally Unavailable","Registered Sex Offender","Major in Business","Schizophrenic",
-    "Watched every single Game Theory FNAF Lore Video","Secretly just farted right now","Has Nightvision",
-    "Can only count up to 10","Extremely overweight","Traumatic Childhood","Has watched every single Pewdiepie video ever",
-    "Uncontrollable bladder","Can smell your fears","Is secretly Indian","Doesn’t wash their hands after using the restroom",
-    "Severely addicted to crack","Methamphetamine Addict","Is a Bronie","5’2","Has a Sonic OC","63 years old",
-    "Obsessive Compulsive Disorder","Holding in a fart right now","Thinks Fanboy and ChumChum is better than The Amazing World of Gumball",
-    "Must rhyme while talking","Physically Violent","is a groomer","Has a foot fetish","Nose grows longer when they lie",
-    "Cant stop applying chapstick","Really Sweaty like REALLY Sweaty","Has a picture of Nicki Minaj in their wallet",
-    "Is really bad at Fortnite","Is actually a dog","Just found out about the Holocaust","Is handicapped","Swag",
-    "Sleeper activation code 'Garfield' makes them act like a cat","Part-time Neko Girl","Very Racist","Orthodox Catholic",
-    "Streams on Twitch but only gets 3 viewers","Believes the earth is flat","Been switching up on the day ones since day one",
-    "Betrayed Jesus at the Last Supper","Is actually 2 kids in a trench coat","Plays Valorant","Does not like Nicki Minaj","Has dementia"
+    "Emotionally Unavailable",
+    "Registered Sex Offender",
+    "Major in Business",
+    "Schizophrenic",
+    "Watched every single Game Theory FNAF Lore Video",
+    "Secretly just farted right now",
+    "Has Nightvision",
+    "Can only count up to 10",
+    "Extremely overweight",
+    "Traumatic Childhood",
+    "Has watched every single Pewdiepie video ever",
+    "Uncontrollable bladder",
+    "Can smell your fears",
+    "Is secretly Indian",
+    "Doesn’t wash their hands after using the restroom",
+    "Severely addicted to crack",
+    "Methamphetamine Addict",
+    "Is a Bronie",
+    "5’2",
+    "Has a Sonic OC",
+    "63 years old",
+    "Obsessive Compulsive Disorder",
+    "Holding in a fart right now",
+    "Thinks Fanboy and ChumChum is better than The Amazing World of Gumball",
+    "Must rhyme while talking",
+    "Physically Violent",
+    "is a groomer",
+    "Has a foot fetish",
+    "Nose grows longer when they lie",
+    "Cant stop applying chapstick",
+    "Really Sweaty like REALLY Sweaty",
+    "Has a picture of Nicki Minaj in their wallet",
+    "Is really bad at Fortnite",
+    "Is actually a dog",
+    "Just found out about the Holocaust",
+    "Is handicapped",
+    "Swag",
+    "Sleeper activation code 'Garfield' makes them act like a cat",
+    "Part-time Neko Girl",
+    "Very Racist",
+    "Orthodox Catholic",
+     "Streams on Twitch but only gets 3 viewers",
+     "Believes the earth is flat",
+     "Been switching up on the day ones since day one",
+     "Betrayed Jesus at the Last Supper",
+     "Is actually 2 kids in a trench coat",
+     "Plays Valorant",
+     "Does not like Nicki Minaj",
+     "Has dementia"
+
+
+    
+    
+    
   ]);
 }
 
@@ -167,41 +287,26 @@ function emitGameState(code, toId = null) {
   const submissions = R.submissions || {};
   const revealed = R.revealed || {};
   const twistsAssigned = R.twistsAssigned || {};
-  const jobOptions = Array.isArray(R.jobOptions) ? R.jobOptions : [];
+  const jobOptions = R.jobOptions || [];
   const twistBank = Array.isArray(R.twistBank) ? R.twistBank : [];
-
-  // prune ghost submissions (player left)
-  for (const pid of Object.keys(submissions)) {
-    if (!players[pid]) delete submissions[pid];
-  }
-
-  // ensure stage indices are valid
-  R.stageOrder = Array.isArray(R.stageOrder) ? R.stageOrder.filter(id => players[id]) : [];
-  if (R.stageIndex < 0) R.stageIndex = 0;
-  if (R.stageIndex >= R.stageOrder.length) R.stageIndex = R.stageOrder.length - 1;
-  if (R.phase === "reveal") {
-    R.currentCandidateId = R.stageOrder[R.stageIndex] || null;
-  } else {
-    R.currentCandidateId = null;
-  }
 
   // Public submissions show ONLY revealed traits
   const pubSubmissions = Object.fromEntries(
     Object.entries(submissions).map(([pid, s]) => {
-      const rev = Array.isArray(revealed[pid]) ? revealed[pid] : [];
+      const revealedForPid = revealed[pid] || [];
       return [pid, {
         id: pid,
         name: players[pid]?.name || "Left",
-        traits: rev.slice(0, 3),
+        traits: revealedForPid,
         twist: twistsAssigned[pid] || null,
         winner: !!s.winner,
       }];
     })
   );
 
-  // Per-stage convenience flags
+  // Per-stage convenience flags so client can toggle UI instantly
   const curId = R.currentCandidateId || null;
-  const curRevealedCount = curId ? ((revealed[curId] || []).length) : 0;
+  const curRevealedCount = curId ? (revealed[curId] || []).length : 0;
   const curTwist = curId ? (twistsAssigned[curId] || null) : null;
   const canAssignTwist = (R.phase === "reveal") && !!curId && curRevealedCount === 3 && !curTwist;
   const canEndTurn = (R.phase === "reveal") && !!curId && !!curTwist;
@@ -210,9 +315,9 @@ function emitGameState(code, toId = null) {
     // phases: lobby | chooseJob | chooseTraits | reveal | judge
     phase: R.phase,
     round: R.round,
-    interviewerId: R.interviewerId || null,
+    interviewerId: R.interviewerId,
     interviewerName: players[R.interviewerId]?.name || "—",
-    currentJob: R.currentJob || null,
+    currentJob: R.currentJob,
     submissions: pubSubmissions,
     players: Object.fromEntries(
       Object.entries(players).map(([id, p]) => [id, { name: p?.name ?? "—", score: p?.score ?? 0 }])
@@ -236,7 +341,7 @@ function emitGameState(code, toId = null) {
       isInterviewer,
       jobOptions: (isInterviewer && R.phase === "chooseJob") ? jobOptions : undefined,
       // Hide the twist bank from interviewer as soon as the current candidate has a twist (or empty)
-      twistBank: (isInterviewer && R.phase === "reveal" && !curTwist && twistBank.length > 0) ? twistBank.slice(0, 16) : undefined,
+      twistBank: (isInterviewer && R.phase === "reveal" && !curTwist && twistBank.length > 0) ? twistBank : undefined,
       hand: (R.phase === "chooseTraits" && !isInterviewer) ? (me?.hand || []) : [],
       // Give the on-stage candidate their full locked traits to choose reveal order
       myAllTraits: (isCurrent ? (submissions[id]?.traits || []) : undefined),
@@ -252,9 +357,6 @@ function emitGameState(code, toId = null) {
 function prepareRound(R) {
   const ids = Object.keys(R.players);
   if (ids.length === 0) return;
-
-  // clear any previous reveal timer
-  if (R._revealTimer) { clearTimeout(R._revealTimer); R._revealTimer = null; }
 
   // seating/order (join order)
   R._order = ids.slice();
@@ -311,34 +413,6 @@ function prepareRound(R) {
   touchRoom(R);
 }
 
-function startRevealTimer(code, R) {
-  if (R._revealTimer) clearTimeout(R._revealTimer);
-  if (R.phase !== "reveal" || !R.currentCandidateId) { R._revealTimer = null; return; }
-  R._revealTimer = setTimeout(() => {
-    try {
-      // auto-assign a random twist if none assigned, then advance
-      const pid = R.currentCandidateId;
-      if (pid && !R.twistsAssigned[pid]) {
-        const candidateTwist = (R.twistBank && R.twistBank.length) ? R.twistBank.pop() : null;
-        if (candidateTwist) R.twistsAssigned[pid] = candidateTwist;
-      }
-      io.to(code).emit("chat", { name: "SYSTEM", msg: "Time’s up — moving to next candidate." });
-      // advance turn same as endTurn
-      R.stageIndex++;
-      if (R.stageIndex >= R.stageOrder.length) {
-        R.phase = "judge";
-        R.currentCandidateId = null;
-      } else {
-        R.currentCandidateId = R.stageOrder[R.stageIndex];
-      }
-      touchRoom(R);
-      emitGameState(code);
-      // start timer for next candidate (if still in reveal)
-      startRevealTimer(code, R);
-    } catch (e) { console.error("[reveal timer]", e); }
-  }, REVEAL_IDLE_MS);
-}
-
 // ---------- room directory ----------
 function getRoomList() {
   const list = [];
@@ -365,7 +439,6 @@ setInterval(() => {
     const empty = Object.keys(R.players).length === 0;
     const idle = (t - (R.lastActivityAt || R.createdAt)) > ROOM_IDLE_MS;
     if (empty || idle) {
-      if (R._revealTimer) clearTimeout(R._revealTimer);
       rooms.delete(code);
     }
   }
@@ -387,15 +460,15 @@ io.on("connection", (socket) => {
     return [...socket.rooms].find((r) => rooms.has(r));
   }
 
-  onSafe(socket, "setName", (name) => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("setName", (name) => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const clean = esc(String(name ?? "").trim().slice(0, MAX_NAME_LEN));
     if (clean) socket.data.name = clean;
   });
 
   // create room
-  onSafe(socket, "createRoom", (payload = {}) => {
-    if (guardRate(socket, lastCreateJoinAt, CREATE_JOIN_COOLDOWN_MS, "createJoin")) {
+  socket.on("createRoom", (payload = {}) => {
+    if (tooSoon(lastCreateJoinAt, socket.id, CREATE_JOIN_COOLDOWN_MS)) {
       socket.emit("createError", "Slow down a bit before creating again.");
       return;
     }
@@ -442,8 +515,6 @@ io.on("connection", (socket) => {
       stageIndex: 0,
       currentCandidateId: null,
       revealed: {},
-
-      _revealTimer: null,
     };
 
     rooms.set(room, R);
@@ -454,8 +525,8 @@ io.on("connection", (socket) => {
   });
 
   // join room
-  onSafe(socket, "joinRoom", (payload) => {
-    if (guardRate(socket, lastCreateJoinAt, CREATE_JOIN_COOLDOWN_MS, "createJoin")) {
+  socket.on("joinRoom", (payload) => {
+    if (tooSoon(lastCreateJoinAt, socket.id, CREATE_JOIN_COOLDOWN_MS)) {
       socket.emit("joinError", "Slow down a bit before joining again.");
       return;
     }
@@ -486,14 +557,14 @@ io.on("connection", (socket) => {
   });
 
   // list rooms
-  onSafe(socket, "listRooms", () => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("listRooms", () => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     socket.emit("roomList", getRoomList());
   });
 
   // start game (host only)
-  onSafe(socket, "startGame", () => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("startGame", () => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const room = getMyRoom();
     const R = rooms.get(room);
     if (!R || R.hostId !== socket.id) return;
@@ -511,23 +582,23 @@ io.on("connection", (socket) => {
   });
 
   // interviewer chooses job
-  onSafe(socket, "pickJob", (job) => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("pickJob", (job) => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const room = getMyRoom();
     const R = rooms.get(room);
     if (!R || socket.id !== R.interviewerId || R.phase !== "chooseJob") return;
-    if (R.currentJob) return; // double-click guard
     if (typeof job !== "string" || !R.jobOptions.includes(job)) return;
     R.currentJob = job;
     R.phase = "chooseTraits";
-    R.jobOptions = []; // prevent double-pick shenanigans
+    // prevent double-pick shenanigans
+    R.jobOptions = [];
     touchRoom(R);
     emitGameState(room);
   });
 
   // candidate submits 3 traits (locked, still hidden from others)
-  onSafe(socket, "submitTraits", (picks) => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("submitTraits", (picks) => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const room = getMyRoom();
     const R = rooms.get(room);
     if (!R || R.phase !== "chooseTraits") return;
@@ -554,15 +625,14 @@ io.on("connection", (socket) => {
       R.currentCandidateId = R.stageOrder[0] || null;
       R.revealed = {};
       R.phase = "reveal";
-      startRevealTimer(room, R);
     }
     touchRoom(R);
     emitGameState(room);
   });
 
   // progressive reveal: on-stage candidate reveals one of their locked traits
-  onSafe(socket, "revealTrait", (trait) => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("revealTrait", (trait) => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const room = getMyRoom();
     const R = rooms.get(room);
     if (!R || R.phase !== "reveal") return;
@@ -587,21 +657,20 @@ io.on("connection", (socket) => {
   });
 
   // interviewer assigns one twist — in reveal phase, only to current candidate and only after 3 reveals
-  onSafe(socket, "assignTwist", ({ targetId, twist } = {}) => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("assignTwist", ({ targetId, twist } = {}) => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const room = getMyRoom();
     const R = rooms.get(room);
     if (!R || socket.id !== R.interviewerId) return;
 
     const isReveal = R.phase === "reveal";
     const isLegacyAssign = R.phase === "assignTwists"; // backwards-compat safety
-    if (!isReveal && !isLegacyAssign) return;
+
+    if (!isReveal && !isLegacyAssign) return; // only allowed in reveal (or legacy mode)
 
     if (typeof targetId !== "string" || typeof twist !== "string") return;
     if (!R.submissions[targetId]) return;
-    if (!R.twistBank || !R.twistBank.includes(twist)) {
-      return socket.emit("assignError", "No such twist available.");
-    }
+    if (!R.twistBank.includes(twist)) return;
 
     // One twist per person
     if (R.twistsAssigned[targetId]) return;
@@ -629,8 +698,8 @@ io.on("connection", (socket) => {
   });
 
   // interviewer ends the current candidate's turn (only after twist assigned)
-  onSafe(socket, "endTurn", () => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("endTurn", () => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const room = getMyRoom();
     const R = rooms.get(room);
     if (!R || R.phase !== "reveal") return;
@@ -645,10 +714,8 @@ io.on("connection", (socket) => {
       // all candidates done — move to judge
       R.phase = "judge";
       R.currentCandidateId = null;
-      if (R._revealTimer) { clearTimeout(R._revealTimer); R._revealTimer = null; }
     } else {
       R.currentCandidateId = R.stageOrder[R.stageIndex];
-      startRevealTimer(room, R); // start timer for next candidate
     }
 
     touchRoom(R);
@@ -656,8 +723,8 @@ io.on("connection", (socket) => {
   });
 
   // interviewer picks winner
-  onSafe(socket, "selectWinner", (winnerId) => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("selectWinner", (winnerId) => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const room = getMyRoom();
     const R = rooms.get(room);
     if (!R || socket.id !== R.interviewerId || R.phase !== "judge") return;
@@ -673,8 +740,8 @@ io.on("connection", (socket) => {
   });
 
   // next round (interviewer only)
-  onSafe(socket, "nextRound", () => {
-    if (guardRate(socket, lastActionAt, ACTION_COOLDOWN_MS, "action")) return;
+  socket.on("nextRound", () => {
+    if (tooSoon(lastActionAt, socket.id, ACTION_COOLDOWN_MS)) return;
     const room = getMyRoom();
     const R = rooms.get(room);
     if (!R || socket.id !== R.interviewerId) return;
@@ -686,8 +753,8 @@ io.on("connection", (socket) => {
   });
 
   // simple chat
-  onSafe(socket, "chat", (msg) => {
-    if (guardRate(socket, lastChatAt, CHAT_COOLDOWN_MS, "chat")) return;
+  socket.on("chat", (msg) => {
+    if (tooSoon(lastChatAt, socket.id, CHAT_COOLDOWN_MS)) return;
     const room = getMyRoom();
     if (!room) return;
     const R = rooms.get(room);
@@ -700,7 +767,7 @@ io.on("connection", (socket) => {
   });
 
   // disconnect cleanup
-  onSafe(socket, "disconnect", () => {
+  socket.on("disconnect", () => {
     for (const [code, R] of rooms.entries()) {
       if (!R.players[socket.id]) continue;
 
@@ -719,7 +786,6 @@ io.on("connection", (socket) => {
 
       // empty room — delete then continue so we don't emit to a deleted room
       if (Object.keys(R.players).length === 0) {
-        if (R._revealTimer) clearTimeout(R._revealTimer);
         rooms.delete(code);
         broadcastRoomList();
         continue;
@@ -747,11 +813,9 @@ io.on("connection", (socket) => {
         if (R.stageOrder.length === 0) {
           R.phase = "judge";
           R.currentCandidateId = null;
-          if (R._revealTimer) { clearTimeout(R._revealTimer); R._revealTimer = null; }
         } else {
           if (R.stageIndex >= R.stageOrder.length) R.stageIndex = R.stageOrder.length - 1;
           R.currentCandidateId = R.stageOrder[R.stageIndex] || null;
-          startRevealTimer(code, R);
         }
       }
 
