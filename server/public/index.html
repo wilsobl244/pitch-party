@@ -1,672 +1,1899 @@
 <!DOCTYPE html> 
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Pitch Party — Animated</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="/socket.io/socket.io.js"></script>
 
-  <!-- Clean, rounded sans (easy on the eyes) -->
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet"
+          href="/auth-ui.css" />
 
-  <style>
-    :root{
-      --bg:#0e0e1a; --panel:#16162a; --panel-2:#1c1c34; --border:#2a2a4a;
-      --text:#e8e8ff; --muted:#aab; --accent:#ff5db1; --accent-2:#7df3ff; --ok:#7cff9d;
-      --shadow: 0 10px 28px rgba(0,0,0,.35);
-      --r:14px;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      background:
-        radial-gradient(1200px 800px at 10% -10%,rgba(255,93,177,.15),transparent 40%),
-        radial-gradient(900px 700px at 110% 10%,rgba(125,243,255,.12),transparent 40%),
-        var(--bg);
-      color:var(--text);
-      /* Simple, friendly sans (with solid fallbacks incl. Calibri where available) */
-      font-family: 'Manrope', ui-sans-serif, system-ui, "Segoe UI", Calibri, Arial, sans-serif;
-      font-size: 16.5px;
-      line-height: 1.35;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      font-feature-settings: "liga","kern","tnum","ss01";
-    }
+    <link rel="stylesheet"
+          href="/game-ui.css" />
 
-    .wrap{max-width:1100px;margin:0 auto;padding:24px;animation:fadeIn .5s ease both}
-    h1{letter-spacing:.3px;margin:0 0 6px;font-weight:800;font-size:36px}
-    .muted{color:var(--muted);font-size:13.5px}
 
-    .card{
-      background: linear-gradient(180deg,var(--panel),var(--panel-2));
-      border:1px solid var(--border); border-radius:var(--r); padding:16px; margin:12px 0;
-      box-shadow:var(--shadow); position:relative; overflow:hidden;
-    }
-    .card::after{
-      content:""; position:absolute; inset:0 0 auto 0; height:1px;
-      background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);
-      opacity:.6;
-    }
+    <meta charset="utf-8" />
+    <title>Lumpia Fart — Animated</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <script src="/socket.io/socket.io.js"></script>
 
-    input,button,select{
-      padding:10px 12px;border-radius:10px;border:1px solid var(--border);
-      background:#0b0b18;color:var(--text); outline:none;
-      transition:transform .08s ease, box-shadow .18s ease,border-color .2s;
-      font-family: inherit;
-      font-size: 16px;
-    }
-    input:focus,select:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(255,93,177,.15)}
-    button{cursor:pointer}
-    button:hover{transform:translateY(-1px); box-shadow:0 6px 18px rgba(0,0,0,.35)}
-    button:active{transform:translateY(0)}
+    <!-- Clean, rounded sans (easy on the eyes) -->
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .pill{
-      border:1px solid var(--border); border-radius:999px; padding:4px 12px; color:var(--muted);
-      background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(0,0,0,.1));
-      font-size: 14.5px;
-      font-weight:600;
-      letter-spacing:.2px;
-    }
 
-    /* Host name: big, bold, readable */
-    .pill.host-name{
-      font-weight:800;
-      font-size:22px;
-      color:var(--text);
-      border-color:var(--accent);
-      box-shadow:0 0 0 2px rgba(255,93,177,.25) inset, 0 8px 22px rgba(255,93,177,.18);
-      letter-spacing:.2px;
-    }
-    .host-badge{
-      border-color:var(--accent);
-      color:#ffd1ea;
-      font-weight:800;
-    }
-
-    .hand{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:10px}
-    .grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px}
-    .cardlet{
-      background:linear-gradient(180deg,#14142a,#121226);
-      border:1px solid var(--border); border-radius:12px; min-height:94px;
-      display:flex;align-items:center;justify-content:center;text-align:center; cursor:pointer;
-      transform:translateZ(0); transition:transform .12s ease, box-shadow .2s ease, border-color .15s ease;
-      box-shadow:0 6px 12px rgba(0,0,0,.25);
-      animation:floatIn .4s ease both;
-      padding:10px;
-      font-weight:600;
-    }
-    .cardlet.small{min-height:60px;font-size:14.5px}
-    .cardlet:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 12px 26px rgba(0,0,0,.35)}
-    .cardlet.sel{
-      border-color:var(--accent); box-shadow:0 8px 28px rgba(255,93,177,.25), 0 0 0 2px rgba(255,93,177,.25) inset;
-      animation:pop .18s ease;
-    }
-
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:10px;border-bottom:1px solid var(--border);font-size:14.5px}
-    th{color:var(--muted);text-align:left}
-    tr.reveal{animation:fadeUp .28s ease both}
-    a.code{color:#ffd1ea;cursor:pointer;text-decoration:none}
-    a.code:hover{text-decoration:underline}
-
-    /* section show/hide */
-    .panel{display:none;opacity:0;transform:translateY(8px);pointer-events:none}
-    .panel.show{display:block;opacity:1;transform:none;pointer-events:auto;transition:opacity .25s ease, transform .25s ease}
-
-    /* winner highlight */
-    .winner{box-shadow:0 0 0 2px var(--ok) inset, 0 8px 28px rgba(124,255,157,.25) !important; animation:glow 1.4s ease infinite}
-
-    /* keyframes */
-    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-    @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-    @keyframes floatIn{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:none}}
-    @keyframes pop{0%{transform:scale(.98)}60%{transform:scale(1.03)}100%{transform:scale(1)}}
-    @keyframes glow{0%,100%{filter:drop-shadow(0 0 0 rgba(124,255,157,0))}50%{filter:drop-shadow(0 0 12px rgba(124,255,157,.35))}}
-
-    /* subtle shimmer divider on cards */
-    .card .shine{position:absolute; inset:auto -40% 0 -40%; height:2px; background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent)}
-
-    .section-title{margin:12px 0 6px}
-  </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Pitch Party</h1>
-  <p class="muted">Progressive reveal mode — each candidate takes the stage, reveals traits one-by-one, then gets a twist.</p>
 
-  <!-- Auth + Create/Join -->
-  <div class="card panel show" id="auth">
-    <div class="shine"></div>
-    <div class="row">
-      <input id="name" placeholder="your name"/>
-      <button id="saveName">Save</button>
+    <div class="ambient-background" aria-hidden="true">
+        <div class="ambient-orb ambient-orb-one"></div>
+        <div class="ambient-orb ambient-orb-two"></div>
+        <div class="ambient-grid"></div>
     </div>
 
-    <div class="row" style="margin-top:8px;">
-      <button id="createRoom" disabled>Create Public Room</button>
-      <label><input type="checkbox" id="privateToggle"> Private?</label>
-      <input id="createPass" placeholder="passcode (if private)" style="width:180px" />
-    </div>
+    <header id="accountHeader"
+            class="account-header"
+            hidden>
+        <div class="account-header-inner">
 
-    <div class="row" style="margin-top:8px;">
-      <input id="code" placeholder="ROOM" style="width:90px;text-transform:uppercase"/>
-      <input id="joinPass" placeholder="passcode (if required)" style="width:180px"/>
-      <button id="join" disabled>Join</button>
-    </div>
 
-    <p class="muted">Room: <span id="roomPill" class="pill">—</span></p>
-  </div>
+            <a class="brand"
+               href="/"
+               aria-label="Lumpia Fart home">
+                <div class="brand-mark">
+                    <span class="brand-briefcase">💼</span>
+                    <span class="brand-spark">✦</span>
+                </div>
 
-  <!-- Room Directory -->
-  <div class="card panel show" id="directory">
-    <div class="shine"></div>
-    <div class="row" style="justify-content:space-between;align-items:center">
-      <h3 style="margin:0;">Public Rooms</h3>
-      <div class="row">
-        <button id="refreshRooms">Refresh</button>
-        <span class="muted">Click a code to fill the join box</span>
-      </div>
-    </div>
-    <table id="roomsTable">
-      <thead><tr><th>Code</th><th>Players</th><th>Phase</th><th>Round</th><th>Created</th></tr></thead>
-      <tbody id="roomsBody"></tbody>
-    </table>
-  </div>
+                <div class="brand-copy">
+                    <span class="brand-name">
+                        Lumpia Fart
+                    </span>
 
-  <!-- Lobby -->
-  <div class="card panel" id="lobby">
-    <div class="shine"></div>
-    <h3>Lobby</h3>
-    <div id="players"></div>
-    <div class="row" style="margin-top:8px;">
-      <button id="start" style="display:none;">Start Game</button>
-      <span id="wait" class="muted">Waiting for host…</span>
-    </div>
-  </div>
+                    <span class="brand-tagline">
+                        Make your case. Get hired.
+                    </span>
+                </div>
+            </a>
 
-  <!-- Game -->
-  <div class="card panel" id="game">
-    <div class="shine"></div>
-    <div class="row" style="justify-content:space-between;align-items:flex-end;gap:16px;">
-      <div>
-        <div class="muted">Current Job</div>
-        <div id="job" style="font-weight:800;font-size:18px;">—</div>
-        <div class="muted" id="interviewerTag" style="margin-top:4px;"></div>
-      </div>
-      <div class="row">
-        <span class="pill">Round <span id="round">1</span></span>
-        <span class="pill">Phase <span id="phase">—</span></span>
-      </div>
-    </div>
+            <div class="account-header-actions">
 
-    <!-- INTERVIEWER: pick job -->
-    <div class="section" id="pickJobSec" style="margin-top:12px;display:none;">
-      <h3 class="section-title">Pick a Job</h3>
-      <div id="jobOptions" class="grid"></div>
-    </div>
+                <div class="online-indicator">
+                    <span class="online-dot"></span>
+                    <span>Online</span>
+                </div>
 
-    <!-- CANDIDATE: choose traits -->
-    <div class="section" id="handSec" style="margin-top:12px;display:none;">
-      <h3 class="section-title">Choose 3 Traits (kept hidden)</h3>
-      <div id="hand" class="hand"></div>
-      <div class="row" style="margin-top:8px;">
-        <button id="submit" disabled>Lock 3 Traits</button>
-        <span id="status" class="muted">not submitted</span>
-      </div>
-    </div>
+                <div class="account-menu">
 
-    <!-- REVEAL STAGE -->
-    <div class="section" id="revealSec" style="margin-top:12px;display:none;">
-      <h3 class="section-title">On Stage</h3>
-      <div id="stageWrap" class="card" style="padding:16px;">
-        <div class="row" style="justify-content:space-between;align-items:center;">
-          <div>
-            <div class="muted">Candidate</div>
-            <div id="stageName" style="font-weight:800;font-size:18px">—</div>
-          </div>
-          <div class="row">
-            <span class="pill">Revealed <span id="revealedCount">0</span>/3</span>
-          </div>
+                    <button id="accountMenuButton"
+                            class="account-menu-button"
+                            type="button"
+                            aria-expanded="false">
+                        <span id="accountAvatar"
+                              class="account-avatar">
+                            P
+                        </span>
+
+                        <span class="account-copy">
+                            <span class="account-copy-label">
+                                Signed in as
+                            </span>
+
+                            <span id="headerUsername"
+                                  class="account-copy-name">
+                                Player
+                            </span>
+                        </span>
+
+                        <span class="account-chevron">
+                            ⌄
+                        </span>
+                    </button>
+
+                    <div id="accountDropdown"
+                         class="account-dropdown"
+                         hidden>
+                        <div class="account-dropdown-profile">
+
+                            <span id="dropdownAvatar"
+                                  class="account-avatar account-avatar-large">
+                                P
+                            </span>
+
+                            <div class="account-dropdown-copy">
+
+                                <strong id="dropdownUsername">
+                                    Player
+                                </strong>
+
+                                <span>
+                                    Lumpia Fart account
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                        <div class="account-dropdown-divider"></div>
+
+                        <button id="logoutButton"
+                                class="logout-button"
+                                type="button">
+                            <span class="logout-icon">
+                                ↪
+                            </span>
+
+                            Log out
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+
         </div>
-        <div class="row" id="revealedRow" style="margin-top:8px;"></div>
+    </header>
 
-        <!-- Stage twist row (shows immediately when assigned) -->
-        <div class="row" id="stageTwistRow" style="margin-top:6px;display:none;">
-          <span class="pill" style="border-color:var(--accent-2);color:var(--accent-2)">Twist</span>
-          <span id="stageTwistText" class="pill"></span>
+
+    <section id="authScreen"
+             class="auth-screen">
+        <div class="auth-shell">
+
+            <div class="auth-logo">
+                <div class="auth-logo-mark">
+                    💼
+                </div>
+
+                <h1 class="auth-title">
+                    Lumpia Fart
+                </h1>
+
+                <p class="auth-subtitle">
+                    Make your case. Get hired.
+                </p>
+            </div>
+
+            <div class="auth-tabs">
+
+                <button id="loginTab"
+                        class="auth-tab active"
+                        type="button">
+                    Log In
+                </button>
+
+                <button id="registerTab"
+                        class="auth-tab"
+                        type="button">
+                    Create Account
+                </button>
+
+            </div>
+
+            <form id="accountForm">
+
+                <div class="auth-field">
+                    <label for="accountUsername">
+                        Username
+                    </label>
+
+                    <input id="accountUsername"
+                           autocomplete="username"
+                           maxlength="20"
+                           placeholder="Enter your username" />
+                </div>
+
+                <div class="auth-field">
+                    <label for="accountPassword">
+                        Password
+                    </label>
+
+                    <input id="accountPassword"
+                           type="password"
+                           autocomplete="current-password"
+                           maxlength="128"
+                           placeholder="Enter your password" />
+                </div>
+
+                <div id="confirmPasswordField"
+                     class="auth-field"
+                     style="display:none;">
+                    <label for="confirmPassword">
+                        Confirm password
+                    </label>
+
+                    <input id="confirmPassword"
+                           type="password"
+                           autocomplete="new-password"
+                           maxlength="128"
+                           placeholder="Enter it again" />
+                </div>
+
+                <button id="authSubmit"
+                        class="auth-submit"
+                        type="submit">
+                    Log In
+                </button>
+
+                <div id="authMessage"
+                     class="auth-message"></div>
+
+            </form>
+
+        </div>
+    </section>
+
+    <div class="page-introduction">
+
+        <div class="page-eyebrow">
+            THE PARTY GAME FOR CHUDS
         </div>
 
-        <!-- Current candidate's private tray to pick the next reveal -->
-        <div id="revealChoicesWrap" style="margin-top:10px;display:none;">
-          <div class="muted">Pick a trait to reveal</div>
-          <div id="revealChoices" class="hand"></div>
+        <h1 class="page-title">
+            Welcome to
+            <span>Lumpia Fart</span>
+        </h1>
+
+        <p class="page-description">
+            Build the perfect résumé, survive a surprise
+            background check, and convince the interviewer
+            that you deserve the job.
+        </p>
+
+    </div>
+        <!-- Auth + Create/Join -->
+        <div class="card panel" id="auth">
+            <div class="shine"></div>
+
+            <div style="margin-top:8px; margin-bottom:14px;">
+                <label for="gameDisplayName"
+                       style="
+            display:block;
+            margin-bottom:7px;
+            font-weight:700;
+        ">
+                    Name shown in this game
+                </label>
+
+                <input id="gameDisplayName"
+                       maxlength="24"
+                       placeholder="Choose your interview name"
+                       autocomplete="off"
+                       style="width:min(360px, 100%);" />
+
+                <div class="muted" style="margin-top:6px;">
+                    This can be different from your account username.
+                </div>
+
+
+                <div style="
+        margin-top:22px;
+        margin-bottom:10px;
+    ">
+
+                    <label style="
+            display:block;
+            font-weight:700;
+            margin-bottom:10px;
+        ">
+                        Choose your profile picture
+                    </label>
+
+                    <div id="avatarPicker" class="avatar-picker">
+
+                        <img src="/images/avatars/bossbaby.png"
+                             class="avatar-option selected"
+                             data-avatar="bossbaby.png"
+                             alt="Boss Baby">
+
+                        <img src="/images/avatars/avatar2.png"
+                             class="avatar-option"
+                             data-avatar="avatar2.png"
+                             alt="Avatar 2">
+
+                    </div>
+
+                </div>
+
+
+            </div>
+
+            <div class="row" style="margin-top:8px;">
+                <button id="createRoom">Create Public Room</button>
+                <label><input type="checkbox" id="privateToggle"> Private?</label>
+                <input id="createPass" placeholder="passcode (if private)" style="width:180px" />
+            </div>
+
+            <div class="row" style="margin-top:8px;">
+                <input id="code" placeholder="ROOM" style="width:90px;text-transform:uppercase" />
+                <input id="joinPass" placeholder="passcode (if required)" style="width:180px" />
+                <button id="join">Join</button>
+            </div>
+
+            <p class="muted">Room: <span id="roomPill" class="pill">—</span></p>
         </div>
 
-        <!-- Interviewer controls for twist + end turn -->
-        <div id="stageControls" class="row" style="margin-top:12px;display:none;align-items:center;gap:12px;">
-          <div class="card" id="twistBankCard" style="min-width:260px;">
-            <div class="muted">Twist Bank</div>
-            <div id="twistBank" class="grid"></div>
-          </div>
-          <button id="assignTwistBtn" disabled>Assign Twist</button>
-          <button id="endTurnBtn" disabled>End Turn</button>
+        <!-- Room Directory -->
+        <div class="card panel" id="directory">
+            <div class="shine"></div>
+            <div class="row" style="justify-content:space-between;align-items:center">
+                <h3 style="margin:0;">Public Rooms</h3>
+                <div class="row">
+                    <button id="refreshRooms">Refresh</button>
+                    <span class="muted">Click a code to fill the join box</span>
+                </div>
+            </div>
+            <table id="roomsTable">
+                <thead><tr><th>Code</th><th>Players</th><th>Phase</th><th>Round</th><th>Created</th></tr></thead>
+                <tbody id="roomsBody"></tbody>
+            </table>
         </div>
-      </div>
+
+        <!-- Lobby -->
+        <div class="card panel" id="lobby">
+            <div class="shine"></div>
+            <h3>Lobby</h3>
+            <div id="players"></div>
+            <div class="row" style="margin-top:8px;">
+
+                <button id="start"
+                        style="display:none;">
+                    Start Game
+                </button>
+
+                <button id="leaveRoom">
+                    Leave Lobby
+                </button>
+
+                <span id="wait"
+                      class="muted">
+                    Waiting for host…
+                </span>
+
+            </div>
+        </div>
+
+        <!-- Game -->
+        <div class="card panel" id="game">
+            <div class="shine"></div>
+
+
+            <!-- ==========================
+         MATCH LEADERBOARD
+    ========================== -->
+
+            <div id="matchBanner">
+
+                <div class="matchTitle">
+
+                    🏆 FIRST TO 5 WINS
+
+                </div>
+
+                <div id="leaderboard">
+
+                </div>
+
+            </div>
+
+
+
+            <div class="row" style="justify-content:space-between;align-items:flex-end;gap:16px;">
+                <div>
+                    <div class="muted">Current Job</div>
+                    <div id="job" style="font-weight:800;font-size:18px;">—</div>
+                    <div class="muted" id="interviewerTag" style="margin-top:4px;"></div>
+                </div>
+                <div class="row">
+                    <span class="pill">Round <span id="round">1</span></span>
+                    <span class="pill">Phase <span id="phase">—</span></span>
+                </div>
+            </div>
+
+            <!-- INTERVIEWER: pick job -->
+            <div class="section" id="pickJobSec" style="margin-top:12px;display:none;">
+                <h3 class="section-title">Pick a Job</h3>
+                <div id="jobOptions" class="grid"></div>
+            </div>
+
+            <!-- CANDIDATE: choose traits -->
+            <div class="section" id="handSec" style="margin-top:12px;display:none;">
+                <h3 class="section-title">Choose 3 Traits (kept hidden)</h3>
+                <div id="hand" class="hand"></div>
+                <div class="row" style="margin-top:8px;">
+                    <button id="submit" disabled>Lock 3 Traits</button>
+                    <span id="status" class="muted">not submitted</span>
+                </div>
+            </div>
+
+            <!-- REVEAL STAGE -->
+            <div class="section" id="revealSec" style="display:none;">
+
+                <div class="resume-stage-area">
+
+                    <div class="resume-paper" id="stageResume">
+
+                        <div class="resume-progress">
+                            <span id="revealedCount">0</span>/3
+                        </div>
+
+                        <div class="resume-header">
+
+                            <div>
+
+                                <h1 class="resume-name" id="stageName">
+                                    Candidate
+                                </h1>
+
+                                <div class="resume-role" id="resumeJobTitle">
+                                    Job
+                                </div>
+
+                                <div class="resume-meta">
+                                    Candidate Resume
+                                </div>
+
+                            </div>
+
+
+                            <div class="resume-photo-placeholder">
+                                <img id="resumeAvatar"
+                                     src="/images/avatars/bossbaby.png"
+                                     alt="Avatar">
+                            </div>
+
+                        </div>
+
+                        <div class="resume-section">
+
+                            <div class="resume-section-title">
+                                Qualifications
+                            </div>
+
+                            <div class="resume-section-content">
+
+                                <div id="resumeTraitOne"
+                                     class="resume-entry resume-empty">
+                                    Awaiting first qualification...
+                                </div>
+
+                                <br>
+
+                                <div id="resumeTraitTwo"
+                                     class="resume-entry resume-empty">
+                                    Awaiting second qualification...
+                                </div>
+
+                                <br>
+
+                                <div id="resumeTraitThree"
+                                     class="resume-entry resume-empty">
+                                    Awaiting third qualification...
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                        <div class="resume-section">
+
+                            <div class="resume-section-title">
+                                Background Check
+                            </div>
+
+                            <div class="resume-section-content">
+
+                                <div id="resumeTwist"
+                                     class="resume-entry resume-twist-hidden">
+                                    Background check pending...
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="resume-controls-panel">
+
+                    <div id="revealChoicesWrap"
+                         style="display:none;">
+
+                        <div class="resume-choice-title">
+                            Choose the next trait to reveal
+                        </div>
+
+                        <div id="revealChoices"
+                             class="resume-choice-grid">
+                        </div>
+
+                    </div>
+
+                    <div id="stageControls"
+                         class="resume-action-row"
+                         style="display:none;">
+
+                        <div id="twistBankCard"
+                             class="card">
+
+                            <div class="resume-choice-title">
+                                Twist Bank
+                            </div>
+
+                            <div id="twistBank"
+                                 class="resume-choice-grid">
+                            </div>
+
+                        </div>
+
+                        <button id="assignTwistBtn">
+                            Assign Twist
+                        </button>
+
+                        <button id="endTurnBtn">
+                            End Turn
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Lineup (finished candidates stay visible) -->
+            <h3 class="section-title" style="margin-top:14px;">Lineup</h3>
+            <div id="subs"></div>
+
+            <div class="row" style="margin-top:8px; gap:10px;">
+
+                <button id="next"
+                        style="display:none;">
+                    Next Round
+                </button>
+
+                <button id="leaveGame"
+                        style="display:none;"
+                        class="dangerButton">
+                    Leave Game
+                </button>
+
+            </div>
+        </div>
     </div>
 
-    <!-- Lineup (finished candidates stay visible) -->
-    <h3 class="section-title" style="margin-top:14px;">Lineup</h3>
-    <div id="subs"></div>
+    <!-- tiny confetti canvas -->
 
-    <div class="row" style="margin-top:8px;">
-      <button id="next" style="display:none;">Next Round</button>
+
+    <div id="matchWinnerPopup">
+
+        <div class="popupCard">
+
+            <h1>
+
+                🏆 MATCH COMPLETE
+
+            </h1>
+
+            <h2 id="winnerText"></h2>
+
+            <button id="restartMatch">
+
+                Play Again
+
+            </button>
+
+        </div>
+
     </div>
-  </div>
+
+
+    <canvas id="confetti" style="position:fixed;inset:0;pointer-events:none"></canvas>
+
+    <script>
+        /*
+            Create the shared Socket.IO connection, but do not connect yet.
+
+            Waiting lets auth-ui.js and the game script register all their
+            socket listeners before the connection begins.
+        */
+        const socket = io({
+            autoConnect: false
+        });
+    </script>
+
+    <script src="/auth-ui.js"></script>
+
+    <script src="/account-ui.js"></script>
+
+
+    <script>
+        // Game and room elements
+
+        // elements
+        const auth = document.getElementById('auth');
+        const directory = document.getElementById('directory');
+        const lobby = document.getElementById('lobby');
+        const game = document.getElementById('game');
+
+
+
+
+        const createBtn = document.getElementById('createRoom');
+        const privToggle = document.getElementById('privateToggle');
+        const createPass = document.getElementById('createPass');
+        const joinI = document.getElementById('code');
+        const joinPass = document.getElementById('joinPass');
+        const joinBtn = document.getElementById('join');
+        const roomPill = document.getElementById('roomPill');
+
+        const gameDisplayName =
+            document.getElementById("gameDisplayName");
+
+
+        const avatarPicker =
+            document.getElementById("avatarPicker");
+
+        let selectedAvatar =
+            "bossbaby.png";
+
+
+
+        const roomsBody = document.getElementById('roomsBody');
+        const refreshBtn = document.getElementById('refreshRooms');
+
+        const playersDiv = document.getElementById('players');
+        const startBtn = document.getElementById('start');
+        const waitSpan = document.getElementById('wait');
+
+        const leaveRoomBtn =
+            document.getElementById("leaveRoom");
+
+        const jobEl = document.getElementById('job');
+        const roundEl = document.getElementById('round');
+        const phaseEl = document.getElementById('phase');
+        const interviewerTag = document.getElementById('interviewerTag');
+
+        const pickJobSec = document.getElementById('pickJobSec');
+        const jobOptionsEl = document.getElementById('jobOptions');
+
+        const handSec = document.getElementById('handSec');
+        const handEl = document.getElementById('hand');
+        const submitBtn = document.getElementById('submit');
+        const statusEl = document.getElementById('status');
+
+        const revealSec = document.getElementById('revealSec');
+        const stageName = document.getElementById('stageName');
+        const revealedCount = document.getElementById('revealedCount');
+
+        const stageResume = document.getElementById('stageResume');
+        const resumeJobTitle = document.getElementById('resumeJobTitle');
+
+        const resumeTraitOne = document.getElementById('resumeTraitOne');
+        const resumeTraitTwo = document.getElementById('resumeTraitTwo');
+        const resumeTraitThree = document.getElementById('resumeTraitThree');
+        const resumeTwist = document.getElementById('resumeTwist');
+
+        const resumeAvatar =
+            document.getElementById("resumeAvatar");
+
+        const revealChoicesWrap = document.getElementById('revealChoicesWrap');
+        const revealChoices = document.getElementById('revealChoices');
+        const stageControls = document.getElementById('stageControls');
+        const twistBankCard = document.getElementById('twistBankCard');
+        const twistBankEl = document.getElementById('twistBank');
+        const assignTwistBtn = document.getElementById('assignTwistBtn');
+        const endTurnBtn = document.getElementById('endTurnBtn');
+
+        const subsEl = document.getElementById('subs');
+        const nextBtn = document.getElementById('next');
+
+
+        const leaveGameBtn =
+            document.getElementById("leaveGame");
+
+
+        const leaderboard =
+            document.getElementById("leaderboard");
+
+        const matchWinnerPopup =
+            document.getElementById("matchWinnerPopup");
+
+        const winnerText =
+            document.getElementById("winnerText");
+
+        const restartMatch =
+            document.getElementById("restartMatch");
+
+        let myIsHost = false;
+        let selected = new Set();
+        let selectedTwist = null;
+
+        let celebratedWinnerId = null;
+        let displayedCandidateId = null;
+        let previousRevealedCount = 0;
+        let resumeTransitioning = false;
+
+
+        let lastLeaderboardKey = "";
+        let lastLineupKey = "";
+        let lastHandKey = "";
+        let lastJobOptionsKey = "";
+        let lastStageKey = "";
+
+
+
+        // helper: panel transitions
+        const show = el => { el.classList.add('show'); el.style.display = 'block'; }
+        const hide = el => { el.classList.remove('show'); el.style.display = 'none'; }
+
+
+        hide(auth);
+        hide(directory);
+        hide(lobby);
+        hide(game);
+
+        leaveGameBtn.style.display = "none";
+
+
+
+
+        function getValidGameName() {
+            const name =
+                gameDisplayName.value.trim();
+
+            if (!name) {
+                alert(
+                    "Choose the name you want shown in this game."
+                );
+
+                gameDisplayName.focus();
+                return null;
+            }
+
+            if (name.length > 24) {
+                alert(
+                    "Your game name must be 24 characters or fewer."
+                );
+
+                gameDisplayName.focus();
+                return null;
+            }
+
+            return name;
+        }
+
+
+        // NEW: helper to recompute Assign button enabled/disabled state
+        function updateAssignState(revealedLen, twistForCurrent) {
+            assignTwistBtn.disabled = !(revealedLen === 3 && !twistForCurrent && !!selectedTwist);
+        }
+
+        // auth + create/join
+
+
+
+
+
+
+
+        avatarPicker.onclick = (event) => {
+
+            const avatar =
+                event.target.closest(".avatar-option");
+
+            if (!avatar)
+                return;
+
+            document
+                .querySelectorAll(".avatar-option")
+                .forEach(option =>
+                    option.classList.remove("selected")
+                );
+
+            avatar.classList.add("selected");
+
+            selectedAvatar =
+                avatar.dataset.avatar;
+        };
+
+
+
+
+
+        createBtn.onclick = () => {
+            if (!accountAuthenticated) {
+                alert(
+                    "Please log in before creating a room."
+                );
+
+                authScreen.style.display = "grid";
+                return;
+            }
+
+            const displayName =
+                getValidGameName();
+
+            if (!displayName) {
+                return;
+            }
+
+            const isPrivate =
+                privToggle.checked;
+
+            const passcode =
+                createPass.value.trim();
+
+            if (
+                isPrivate &&
+                passcode.length < 2
+            ) {
+                alert(
+                    "Private rooms need a passcode with at least 2 characters."
+                );
+
+                createPass.focus();
+                return;
+            }
+
+            socket.emit("createRoom", {
+                isPrivate,
+                passcode,
+                displayName,
+                avatar: selectedAvatar
+            });
+
+            createBtn.blur();
+        };
+
+        joinBtn.onclick = () => {
+            if (!accountAuthenticated) {
+                alert(
+                    "Please log in before joining a room."
+                );
+
+                authScreen.style.display = "grid";
+                return;
+            }
+
+            const displayName =
+                getValidGameName();
+
+            if (!displayName) {
+                return;
+            }
+
+            const room =
+                joinI.value
+                    .trim()
+                    .toUpperCase();
+
+            if (!room) {
+                alert("Please enter a room code.");
+                joinI.focus();
+                return;
+            }
+
+            if (!/^[A-Z]{4}$/.test(room)) {
+                alert(
+                    "Room codes must contain exactly 4 letters."
+                );
+
+                joinI.focus();
+                return;
+            }
+
+            socket.emit("joinRoom", {
+                room,
+                passcode: joinPass.value.trim(),
+                displayName,
+                avatar: selectedAvatar
+            });
+
+            joinBtn.blur();
+        };
+
+
+
+        refreshBtn.onclick = () => socket.emit('listRooms');
+
+        socket.on('createError', (msg) => alert(msg));
+        socket.on('joinError', (msg) => alert(msg));
+        socket.on('gameError', (msg) => alert(msg));
+
+        socket.on('roomCreated', ({ room }) => {
+            roomPill.textContent = room; myIsHost = true;
+            hide(auth); hide(directory); show(lobby);
+            startBtn.style.display = 'inline-block'; waitSpan.style.display = 'none';
+        });
+
+        socket.on('joined', ({ room, isHost }) => {
+            roomPill.textContent = room;
+            myIsHost = !!isHost;
+
+            authScreen.style.display = "none";
+
+            hide(auth);
+            hide(directory);
+            show(lobby);
+
+            leaveRoomBtn.disabled = false;
+            startBtn.disabled = false;
+
+            startBtn.style.display =
+                myIsHost ? "inline-block" : "none";
+
+            waitSpan.style.display =
+                myIsHost ? "none" : "inline";
+        });
+
+        leaveRoomBtn.disabled = false;
+        startBtn.disabled = false;
+
+
+
+        socket.on("reconnectedToRoom", ({
+            room,
+            isHost,
+            phase,
+            name
+        }) => {
+            roomPill.textContent = room;
+            myIsHost = Boolean(isHost);
+            if (name) {
+                accountAuthenticated = true;
+                gameDisplayName.value = name;
+            }
+
+            hide(auth);
+            hide(directory);
+
+            if (phase === "lobby") {
+                hide(game);
+                show(lobby);
+
+                startBtn.style.display =
+                    myIsHost ? "inline-block" : "none";
+
+                waitSpan.style.display =
+                    myIsHost ? "none" : "inline";
+            } else {
+                hide(lobby);
+                show(game);
+
+                lastHandKey = "";
+                lastStageKey = "";
+                lastLineupKey = "";
+                lastJobOptionsKey = "";
+
+
+            }
+        });
+
+
+
+        // directory (public rooms)
+        socket.on('roomList', (list) => {
+            const tbody = roomsBody;
+            tbody.innerHTML = '';
+            if (!list || !list.length) {
+                const tr = document.createElement('tr');
+                tr.className = 'reveal';
+                tr.innerHTML = `<td colspan="5" class="muted">No public rooms yet. Create one!</td>`;
+                tbody.appendChild(tr);
+                return;
+            }
+            list.forEach((r, i) => {
+                const tr = document.createElement('tr'); tr.className = 'reveal'; tr.style.animationDelay = `${i * 40}ms`;
+                const created = new Date(r.createdAt).toLocaleTimeString();
+                tr.innerHTML = `
+                            <td><a class="code">${r.code}</a></td>
+                            <td>${r.players}</td>
+                            <td>${r.phase}</td>
+                            <td>${r.round}</td>
+                            <td class="muted">${created}</td>
+                          `;
+                tr.querySelector('a.code').onclick = () => { joinI.value = r.code; joinI.focus(); joinI.animate([{ opacity: .6 }, { opacity: 1 }], { duration: 200 }); };
+                tbody.appendChild(tr);
+            });
+        });
+
+        // ask for list on load, and every 8s
+        socket.emit('listRooms');
+        setInterval(() => {
+            if (
+                directory.classList.contains(
+                    "show"
+                )
+            ) {
+                socket.emit("listRooms");
+            }
+        }, 15000);
+
+        // lobby + game flow
+        startBtn.onclick = () => {
+
+            startBtn.disabled = true;
+
+            socket.emit("startGame");
+
+        };
+
+        leaveRoomBtn.onclick = () => {
+
+            leaveRoomBtn.disabled = true;
+
+            socket.emit("leaveRoom");
+
+        };
+
+
+        leaveGameBtn.onclick = () => {
+
+            const leave = confirm(
+                "Are you sure you want to leave this game?\n\nYour progress for this match will be lost."
+            );
+
+            if (!leave)
+                return;
+
+            leaveGameBtn.disabled = true;
+
+            socket.emit("leaveRoom");
+
+        };
+
+
+
+        submitBtn.onclick = () => {
+            if (selected.size !== 3) return alert('Pick exactly 3 traits');
+            submitBtn.disabled = true;
+            submitBtn.animate([{ transform: 'scale(1)' }, { transform: 'scale(.97)' }, { transform: 'scale(1)' }], { duration: 160 });
+            socket.emit('submitTraits', Array.from(selected));
+        };
+        nextBtn.onclick = () => socket.emit('nextRound');
+
+
+
+        socket.on("leftRoom", () => {
+
+
+            startBtn.style.display = "none";
+
+            waitSpan.style.display = "inline";
+
+
+            leaveRoomBtn.disabled = false;
+
+
+
+            // Reset client state
+            myIsHost = false;
+            selected.clear();
+            selectedTwist = null;
+
+            celebratedWinnerId = null;
+            displayedCandidateId = null;
+            previousRevealedCount = 0;
+            resumeTransitioning = false;
+
+            lastLeaderboardKey = "";
+            lastLineupKey = "";
+            lastHandKey = "";
+            lastJobOptionsKey = "";
+            lastStageKey = "";
+
+            roomPill.textContent = "—";
+
+            playersDiv.innerHTML = "";
+
+            leaderboard.innerHTML = "";
+
+            subsEl.innerHTML = "";
+
+            jobEl.textContent = "—";
+
+            roundEl.textContent = "1";
+
+            phaseEl.textContent = "—";
+
+            interviewerTag.textContent = "";
+
+
+
+            hide(lobby);
+            hide(game);
+
+            show(auth);
+
+            show(directory);
+
+         
+            socket.emit("listRooms");
+
+        });
+
+
+        socket.on('lobbyState', ({ players }) => {
+            playersDiv.innerHTML = '';
+            Object.values(players).forEach((p, i) => {
+                const div = document.createElement('div');
+                div.className = 'row';
+                div.style.margin = '4px 0';
+                div.style.animation = 'fadeUp .28s ease both';
+                div.style.animationDelay = `${i * 50}ms`;
+                // Host name bigger & bold with crown
+                const namePillClass = p.isHost ? 'pill host-name' : 'pill';
+                const crown = p.isHost ? ' 👑' : '';
+                div.innerHTML = `
+<img
+    src="/images/avatars/${p.avatar || "bossbaby.png"}"
+    style="
+        width:44px;
+        height:44px;
+        border-radius:50%;
+        object-fit:cover;
+        margin-right:10px;
+        vertical-align:middle;
+    ">
+
+<span class="${namePillClass}">
+    ${p.name}${crown}
+</span>
+
+<span class="muted">
+    score: ${p.score ?? 0}
+</span>
+
+${p.isHost ? '<span class="pill host-badge">HOST</span>' : ''}
+`;
+                playersDiv.appendChild(div);
+            });
+        });
+
+        socket.on('gameState', (s) => {
+
+            startBtn.disabled = false;
+
+
+            hide(lobby);
+
+            show(game);
+
+            leaveGameBtn.style.display = "inline-block";
+
+
+            if (s.phase !== 'judge') {
+                celebratedWinnerId = null;
+            }
+
+
+
+            jobEl.textContent = s.currentJob || '—';
+            roundEl.textContent = s.round || 1;
+            phaseEl.textContent = s.phase || '—';
+            interviewerTag.textContent = s.isInterviewer ? 'You are the interviewer' : `Interviewer: ${s.interviewerName || '—'}`;
+
+            // default hide sections
+            pickJobSec.style.display = 'none';
+            handSec.style.display = 'none';
+            revealSec.style.display = 'none';
+
+            // INTERVIEWER FLOW
+            if (s.isInterviewer) {
+                if (s.phase === 'chooseJob') {
+                    pickJobSec.style.display = 'block';
+
+                    const jobOptionsKey =
+                        JSON.stringify(s.jobOptions || []);
+
+                    if (jobOptionsKey !== lastJobOptionsKey) {
+                        lastJobOptionsKey = jobOptionsKey;
+
+                        renderJobOptions(
+                            s.jobOptions || []
+                        );
+                    }
+                }
+                if (s.phase === 'reveal') {
+                    revealSec.style.display = 'block';
+
+                    const stageKey =
+                        JSON.stringify({
+                            currentCandidateId:
+                                s.currentCandidateId,
+
+                            revealed:
+                                s.revealed?.[
+                                s.currentCandidateId
+                                ] || [],
+
+                            twist:
+                                s.currentCandidateTwist || null,
+
+                            myAllTraits:
+                                s.myAllTraits || [],
+
+                            twistBank:
+                                s.twistBank || [],
+
+                            isInterviewer:
+                                Boolean(s.isInterviewer),
+
+                            currentJob:
+                                s.currentJob || null
+                        });
+
+                    if (stageKey !== lastStageKey) {
+                        lastStageKey = stageKey;
+                        renderStage(s);
+                    }
+                }
+                const winnerSelected = Object.values(s.submissions || {}).some(
+                    submission => submission.winner
+                );
+
+                nextBtn.style.display =
+                    s.phase === 'judge' && winnerSelected
+                        ? 'inline-block'
+                        : 'none';
+            } else {
+                // CANDIDATE FLOW
+                if (s.phase === 'chooseTraits') {
+                    handSec.style.display = 'block';
+
+                    const handKey =
+                        JSON.stringify({
+                            hand: s.hand || [],
+                            submitted: Boolean(s.submitted)
+                        });
+
+                    if (handKey !== lastHandKey) {
+                        lastHandKey = handKey;
+
+                        renderHand(
+                            s.hand || [],
+                            s.submitted
+                        );
+                    }
+                }
+                if (s.phase === 'reveal') {
+                    revealSec.style.display = 'block';
+
+                    const stageKey =
+                        JSON.stringify({
+                            currentCandidateId:
+                                s.currentCandidateId,
+
+                            revealed:
+                                s.revealed?.[
+                                s.currentCandidateId
+                                ] || [],
+
+                            twist:
+                                s.currentCandidateTwist || null,
+
+                            myAllTraits:
+                                s.myAllTraits || [],
+
+                            twistBank:
+                                s.twistBank || [],
+
+                            isInterviewer:
+                                Boolean(s.isInterviewer),
+
+                            currentJob:
+                                s.currentJob || null
+                        });
+
+                    if (stageKey !== lastStageKey) {
+                        lastStageKey = stageKey;
+                        renderStage(s);
+                    }
+                }
+                nextBtn.style.display = 'none';
+            }
+
+            statusEl.textContent =
+                s.submitted
+                    ? "submitted!"
+                    : "not submitted";
+
+            const leaderboardKey =
+                JSON.stringify({
+                    leaderboard:
+                        s.leaderboard || [],
+
+                    matchWinScore:
+                        s.matchWinScore
+                });
+
+            if (leaderboardKey !== lastLeaderboardKey) {
+                lastLeaderboardKey =
+                    leaderboardKey;
+
+                renderLeaderboard(s);
+            }
+
+            const lineupKey =
+                JSON.stringify({
+                    submissions:
+                        s.submissions || {},
+
+                    phase:
+                        s.phase,
+
+                    isInterviewer:
+                        Boolean(s.isInterviewer)
+                });
+
+            if (lineupKey !== lastLineupKey) {
+                lastLineupKey =
+                    lineupKey;
+
+                renderLineup(s);
+            }
+
+
+            if (s.matchOver) {
+
+                matchWinnerPopup.style.display = "flex";
+
+                const winnerName =
+                    s.players?.[s.matchWinner]?.name ||
+                    "A player";
+
+                winnerText.textContent =
+                    `${winnerName} wins the match!`;
+
+            }
+            else {
+
+                matchWinnerPopup.style.display = "none";
+
+                restartMatch.disabled = false;
+
+            }
+        });
+
+        function renderJobOptions(opts) {
+            jobOptionsEl.innerHTML = '';
+            (opts || []).forEach((job, i) => {
+                const d = document.createElement('div');
+                d.className = 'cardlet small';
+                d.textContent = job;
+                d.style.animationDelay = `${i * 40}ms`;
+                d.onclick = () => socket.emit('pickJob', job);
+                jobOptionsEl.appendChild(d);
+            });
+        }
+
+        function renderHand(hand, submitted) {
+            handEl.innerHTML = '';
+
+            const validTraits = new Set(hand || []);
+
+            selected = new Set(
+                [...selected].filter(trait => validTraits.has(trait))
+            );
+
+            (hand || []).forEach((trait, index) => {
+                const card = document.createElement('div');
+
+                card.className = 'cardlet';
+                card.textContent = trait;
+                card.style.animationDelay = `${index * 40}ms`;
+
+                if (selected.has(trait)) {
+                    card.classList.add('sel');
+                }
+
+                card.onclick = () => {
+                    if (submitted) return;
+
+                    if (card.classList.contains('sel')) {
+                        card.classList.remove('sel');
+                        selected.delete(trait);
+                    } else {
+                        if (selected.size >= 3) {
+                            alert('You can only choose 3 traits.');
+                            return;
+                        }
+
+                        card.classList.add('sel');
+                        selected.add(trait);
+                    }
+
+                    submitBtn.disabled = selected.size !== 3;
+                };
+
+                handEl.appendChild(card);
+            });
+
+            submitBtn.disabled = submitted || selected.size !== 3;
+        }
+
+
+
+        function renderLeaderboard(state) {
+
+            if (!leaderboard) return;
+
+            leaderboard.innerHTML = "";
+
+            state.leaderboard.forEach((player, index) => {
+
+                const percent =
+                    (player.score / state.matchWinScore) * 100;
+
+                const row = document.createElement("div");
+
+                row.className = "leaderRow";
+
+                let medal = "";
+
+                if (index === 0)
+                    medal = "🥇";
+
+                else if (index === 1)
+                    medal = "🥈";
+
+                else if (index === 2)
+                    medal = "🥉";
+                row.innerHTML = `
+
+<div class="leaderLeft">
+
+    <div
+    style="
+    display:flex;
+    align-items:center;
+    gap:14px;
+    ">
+
+        <img
+        class="leaderAvatar game-avatar"
+        src="/images/avatars/${player.avatar || "bossbaby.png"}"
+        alt="Avatar">
+
+        <div style="flex:1;">
+
+            <div class="leaderName">
+                ${medal} ${player.name}
+            </div>
+
+            <div class="leaderBar">
+                <div
+                    class="leaderFill"
+                    style="width:${percent}%">
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
 </div>
 
-<!-- tiny confetti canvas -->
-<canvas id="confetti" style="position:fixed;inset:0;pointer-events:none"></canvas>
+<div class="leaderScore">
+    ${player.score}/${state.matchWinScore}
+</div>
 
-<script>
-  const socket = io();
+`;
 
-  // elements
-  const auth = document.getElementById('auth');
-  const directory = document.getElementById('directory');
-  const lobby = document.getElementById('lobby');
-  const game = document.getElementById('game');
 
-  const nameI = document.getElementById('name');
-  const saveBtn = document.getElementById('saveName');
-  const createBtn = document.getElementById('createRoom');
-  const privToggle = document.getElementById('privateToggle');
-  const createPass = document.getElementById('createPass');
-  const joinI = document.getElementById('code');
-  const joinPass = document.getElementById('joinPass');
-  const joinBtn = document.getElementById('join');
-  const roomPill = document.getElementById('roomPill');
+                leaderboard.appendChild(row);
 
-  const roomsBody = document.getElementById('roomsBody');
-  const refreshBtn = document.getElementById('refreshRooms');
+            });
 
-  const playersDiv = document.getElementById('players');
-  const startBtn = document.getElementById('start');
-  const waitSpan = document.getElementById('wait');
-
-  const jobEl = document.getElementById('job');
-  const roundEl = document.getElementById('round');
-  const phaseEl = document.getElementById('phase');
-  const interviewerTag = document.getElementById('interviewerTag');
-
-  const pickJobSec = document.getElementById('pickJobSec');
-  const jobOptionsEl = document.getElementById('jobOptions');
-
-  const handSec = document.getElementById('handSec');
-  const handEl = document.getElementById('hand');
-  const submitBtn = document.getElementById('submit');
-  const statusEl = document.getElementById('status');
-
-  const revealSec = document.getElementById('revealSec');
-  const stageName = document.getElementById('stageName');
-  const revealedCount = document.getElementById('revealedCount');
-  const revealedRow = document.getElementById('revealedRow');
-  const stageTwistRow = document.getElementById('stageTwistRow');
-  const stageTwistText = document.getElementById('stageTwistText');
-  const revealChoicesWrap = document.getElementById('revealChoicesWrap');
-  const revealChoices = document.getElementById('revealChoices');
-  const stageControls = document.getElementById('stageControls');
-  const twistBankCard = document.getElementById('twistBankCard');
-  const twistBankEl = document.getElementById('twistBank');
-  const assignTwistBtn = document.getElementById('assignTwistBtn');
-  const endTurnBtn = document.getElementById('endTurnBtn');
-
-  const subsEl = document.getElementById('subs');
-  const nextBtn = document.getElementById('next');
-
-  let myIsHost = false;
-  let selected = new Set(); // pre-selection of 3 traits
-  let selectedTwist = null; // interviewer selection
-
-  // helper: panel transitions
-  const show = el => { el.classList.add('show'); el.style.display = 'block'; }
-  const hide = el => { el.classList.remove('show'); el.style.display = 'none'; }
-
-  // NEW: helper to recompute Assign button enabled/disabled state
-  function updateAssignState(revealedLen, twistForCurrent){
-    assignTwistBtn.disabled = !(revealedLen === 3 && !twistForCurrent && !!selectedTwist);
-  }
-
-  // auth + create/join
-  saveBtn.onclick = () => {
-    const n = nameI.value.trim();
-    if (!n) return alert('Enter a name');
-    socket.emit('setName', n);
-    createBtn.disabled = false; joinBtn.disabled = false;
-    saveBtn.animate([{transform:'scale(1)'},{transform:'scale(1.06)'},{transform:'scale(1)'}], {duration:180});
-  };
-
-  createBtn.onclick = () => {
-    const isPrivate = privToggle.checked;
-    const passcode = createPass.value.trim();
-    socket.emit('createRoom', { isPrivate, passcode });
-    createBtn.blur();
-  };
-
-  joinBtn.onclick = () => {
-    socket.emit('joinRoom', { room: joinI.value.trim().toUpperCase(), passcode: joinPass.value.trim() });
-    joinBtn.blur();
-  };
-
-  refreshBtn.onclick = () => socket.emit('listRooms');
-
-  socket.on('createError', (msg) => alert(msg));
-  socket.on('joinError', (msg) => alert(msg));
-
-  socket.on('roomCreated', ({room}) => {
-    roomPill.textContent = room; myIsHost = true;
-    hide(auth); hide(directory); show(lobby);
-    startBtn.style.display='inline-block'; waitSpan.style.display='none';
-  });
-
-  socket.on('joined', ({room, isHost}) => {
-    roomPill.textContent = room; myIsHost = !!isHost;
-    hide(auth); hide(directory); show(lobby);
-    if (myIsHost){ startBtn.style.display='inline-block'; waitSpan.style.display='none'; }
-  });
-
-  // directory (public rooms)
-  socket.on('roomList', (list) => {
-    const tbody = roomsBody;
-    tbody.innerHTML = '';
-    if (!list || !list.length) {
-      const tr = document.createElement('tr');
-      tr.className = 'reveal';
-      tr.innerHTML = `<td colspan="5" class="muted">No public rooms yet. Create one!</td>`;
-      tbody.appendChild(tr);
-      return;
-    }
-    list.forEach((r,i) => {
-      const tr = document.createElement('tr'); tr.className = 'reveal'; tr.style.animationDelay = `${i*40}ms`;
-      const created = new Date(r.createdAt).toLocaleTimeString();
-      tr.innerHTML = `
-        <td><a class="code">${r.code}</a></td>
-        <td>${r.players}</td>
-        <td>${r.phase}</td>
-        <td>${r.round}</td>
-        <td class="muted">${created}</td>
-      `;
-      tr.querySelector('a.code').onclick = () => { joinI.value = r.code; joinI.focus(); joinI.animate([{opacity:.6},{opacity:1}],{duration:200}); };
-      tbody.appendChild(tr);
-    });
-  });
-
-  // ask for list on load, and every 8s
-  socket.emit('listRooms');
-  setInterval(()=>socket.emit('listRooms'), 8000);
-
-  // lobby + game flow
-  startBtn.onclick = () => socket.emit('startGame');
-  submitBtn.onclick = () => {
-    if (selected.size !== 3) return alert('Pick exactly 3 traits');
-    submitBtn.disabled = true;
-    submitBtn.animate([{transform:'scale(1)'},{transform:'scale(.97)'},{transform:'scale(1)'}], {duration:160});
-    socket.emit('submitTraits', Array.from(selected));
-  };
-  nextBtn.onclick = () => socket.emit('nextRound');
-
-  socket.on('lobbyState', ({players}) => {
-    playersDiv.innerHTML = '';
-    Object.values(players).forEach((p,i)=>{
-      const div = document.createElement('div');
-      div.className='row';
-      div.style.margin='4px 0';
-      div.style.animation = 'fadeUp .28s ease both';
-      div.style.animationDelay = `${i*50}ms`;
-      // Host name bigger & bold with crown
-      const namePillClass = p.isHost ? 'pill host-name' : 'pill';
-      const crown = p.isHost ? ' 👑' : '';
-      div.innerHTML = `
-        <span class="${namePillClass}">${p.name}${crown}</span>
-        <span class="muted">score: ${p.score??0}</span>
-        ${p.isHost?'<span class="pill host-badge">HOST</span>':''}
-      `;
-      playersDiv.appendChild(div);
-    });
-  });
-
-  socket.on('gameState', (s) => {
-    hide(lobby); show(game);
-
-    jobEl.textContent = s.currentJob || '—';
-    roundEl.textContent = s.round || 1;
-    phaseEl.textContent = s.phase || '—';
-    interviewerTag.textContent = s.isInterviewer ? 'You are the interviewer' : `Interviewer: ${s.interviewerName || '—'}`;
-
-    // default hide sections
-    pickJobSec.style.display = 'none';
-    handSec.style.display = 'none';
-    revealSec.style.display = 'none';
-
-    // INTERVIEWER FLOW
-    if (s.isInterviewer) {
-      if (s.phase === 'chooseJob') {
-        pickJobSec.style.display = 'block';
-        renderJobOptions(s.jobOptions || []);
-      }
-      if (s.phase === 'reveal') {
-        revealSec.style.display = 'block';
-        renderStage(s);
-      }
-      nextBtn.style.display = (s.phase === 'judge') ? 'inline-block' : 'none';
-    } else {
-      // CANDIDATE FLOW
-      if (s.phase === 'chooseTraits') {
-        handSec.style.display = 'block';
-        renderHand(s.hand || [], s.submitted);
-      }
-      if (s.phase === 'reveal') {
-        revealSec.style.display = 'block';
-        renderStage(s);
-      }
-      nextBtn.style.display = 'none';
-    }
-
-    statusEl.textContent = s.submitted ? 'submitted!' : 'not submitted';
-    renderLineup(s);
-  });
-
-  function renderJobOptions(opts){
-    jobOptionsEl.innerHTML = '';
-    (opts || []).forEach((job,i)=>{
-      const d = document.createElement('div');
-      d.className = 'cardlet small';
-      d.textContent = job;
-      d.style.animationDelay = `${i*40}ms`;
-      d.onclick = () => socket.emit('pickJob', job);
-      jobOptionsEl.appendChild(d);
-    });
-  }
-
-  function renderHand(hand, submitted){
-    handEl.innerHTML=''; selected.clear();
-    (hand||[]).forEach((t,i)=>{
-      const d=document.createElement('div');
-      d.className='cardlet'; d.textContent=t; d.style.animationDelay = `${i*40}ms`;
-      d.onclick=()=>{
-        if(submitted) return;
-        if(d.classList.contains('sel')){ d.classList.remove('sel'); selected.delete(t); }
-        else{
-          if(selected.size===3) return; d.classList.add('sel'); selected.add(t);
         }
-        submitBtn.disabled = !(selected.size===3);
-      };
-      handEl.appendChild(d);
-    });
-  }
 
-  function pill(text){ const s=document.createElement('span'); s.className='pill'; s.textContent=text; return s; }
 
-  function renderStage(s){
-    const currentId = s.currentCandidateId;
-    const me = s.myId;
-    const subs = s.submissions || {};
-    const cur = subs[currentId];
+        function pill(text) { const s = document.createElement('span'); s.className = 'pill'; s.textContent = text; return s; }
 
-    stageName.textContent = cur ? cur.name : '—';
-    // revealed traits for current
-    const revealed = (s.revealed && s.revealed[currentId]) || [];
-    revealedCount.textContent = revealed.length;
 
-    revealedRow.innerHTML = '';
-    revealed.forEach(t => revealedRow.appendChild(pill(t)));
 
-    // stage twist (show immediately when assigned)
-    const twistForCurrent = s.currentCandidateTwist || (cur && cur.twist) || null;
-    if (twistForCurrent) {
-      stageTwistText.textContent = twistForCurrent;
-      stageTwistRow.style.display = 'flex';
-    } else {
-      stageTwistRow.style.display = 'none';
-      stageTwistText.textContent = '';
-    }
+        function renderResumeEntry(element, text, placeholder, shouldAnimate) {
+            element.classList.remove(
+                'resume-empty',
+                'resume-background-check',
+                'resume-twist-hidden',
+                'reveal-entry'
+            );
 
-    // candidate private choices
-    if (me === currentId && Array.isArray(s.myAllTraits)){
-      const remaining = s.myAllTraits.filter(t => !revealed.includes(t));
-      revealChoicesWrap.style.display = remaining.length ? 'block' : 'none';
-      revealChoices.innerHTML = '';
-      remaining.forEach((t,i)=>{
-        const d = document.createElement('div'); d.className = 'cardlet'; d.textContent = t; d.style.animationDelay = `${i*35}ms`;
-        d.onclick = () => socket.emit('revealTrait', t);
-        revealChoices.appendChild(d);
-      });
-    } else {
-      revealChoicesWrap.style.display = 'none';
-    }
+            if (text) {
+                element.textContent = text;
 
-    // interviewer controls
-    if (s.isInterviewer){
-      stageControls.style.display = 'flex';
+                if (shouldAnimate) {
+                    void element.offsetWidth;
+                    element.classList.add('reveal-entry');
+                }
+            } else {
+                element.textContent = placeholder;
+                element.classList.add('resume-empty');
+            }
+        }
 
-      // Hide the twist bank and assign button AFTER a twist is assigned to this candidate
-      const bankVisible = Array.isArray(s.twistBank) && s.twistBank.length && !twistForCurrent;
-      twistBankCard.style.display = bankVisible ? 'block' : 'none';
-      assignTwistBtn.style.display = bankVisible ? 'inline-block' : 'none';
+        function renderStage(s) {
 
-      if (bankVisible) {
-        renderTwistBank(s.twistBank || [], revealed.length, twistForCurrent);
-      } else {
-        twistBankEl.innerHTML = '';
-        selectedTwist = null;
-      }
+            if (!stageResume) {
+                console.error("stageResume not found");
+                return;
+            }
 
-      assignTwistBtn.onclick = () => {
-        if (!selectedTwist) return;
-        socket.emit('assignTwist', { targetId: currentId, twist: selectedTwist });
-      };
 
-      const canEnd = !!twistForCurrent;
-      endTurnBtn.disabled = !canEnd;
-      endTurnBtn.onclick = () => socket.emit('endTurn');
+            const currentId = s.currentCandidateId;
+            const me = s.myId;
+            const submissions = s.submissions || {};
+            const currentSubmission = submissions[currentId];
 
-      updateAssignState(revealed.length, twistForCurrent);
-    } else {
-      stageControls.style.display = 'none';
-    }
-  }
+            const revealed =
+                (s.revealed && s.revealed[currentId]) || [];
 
-  function renderTwistBank(bank, revealedLen = 0, twistForCurrent = null){
-    twistBankEl.innerHTML = '';
-    selectedTwist = null;
-    (bank||[]).forEach((tw,i)=>{
-      const d = document.createElement('div');
-      d.className='cardlet small';
-      d.textContent = tw;
-      d.style.animationDelay = `${i*35}ms`;
-      d.onclick = () => {
-        const was = d.classList.contains('sel');
-        [...twistBankEl.children].forEach(c=>c.classList.remove('sel'));
-        if (!was){ d.classList.add('sel'); selectedTwist = tw; } else { selectedTwist = null; }
-        updateAssignState(revealedLen, twistForCurrent);
-      };
-      twistBankEl.appendChild(d);
-    });
-    updateAssignState(revealedLen, twistForCurrent);
-  }
+            const twistForCurrent =
+                s.currentCandidateTwist ||
+                (currentSubmission && currentSubmission.twist) ||
+                null;
 
-  function renderLineup(s){
-    subsEl.innerHTML='';
-    const entries = Object.values(s.submissions||{});
-    if (!entries.length){ subsEl.innerHTML = '<div class="muted">No submissions yet.</div>'; return; }
 
-    entries.forEach((x,i)=>{
-      const wrap=document.createElement('div');
-      wrap.className='card';
-      wrap.style.animation='fadeUp .28s both';
-      wrap.style.animationDelay=`${i*60}ms`;
-      const isWinner = !!x.winner;
 
-      const twistText = x.twist ? `<div class="row" style="margin-top:6px;"><span class="pill" style="border-color:var(--accent-2);color:var(--accent-2)">Twist</span><span class="pill">${x.twist}</span></div>` : '';
+            if (displayedCandidateId !== currentId) {
+                displayedCandidateId = currentId;
+                previousRevealedCount = 0;
 
-      wrap.innerHTML = `
-        <div class="row" style="justify-content:space-between;">
-          <b>${x.name}</b>
-          <span class="muted">${isWinner?'🏆 winner':''}</span>
+                stageResume.classList.remove("resume-exit");
+                stageResume.classList.remove("resume-swap-in");
+
+                void stageResume.offsetWidth;
+
+                stageResume.classList.add("resume-swap-in");
+            }
+
+            stageName.textContent =
+                currentSubmission?.name || 'Candidate';
+
+            resumeAvatar.src =
+                "/images/avatars/" +
+                (currentSubmission?.avatar || "bossbaby.png");
+
+
+
+            resumeJobTitle.textContent =
+                s.currentJob || 'Undisclosed position';
+
+            revealedCount.textContent = revealed.length;
+
+            renderResumeEntry(
+                resumeTraitOne,
+                revealed[0],
+                'Awaiting first qualification…',
+                revealed.length > previousRevealedCount && revealed.length === 1
+            );
+
+            renderResumeEntry(
+                resumeTraitTwo,
+                revealed[1],
+                'Awaiting second qualification…',
+                revealed.length > previousRevealedCount && revealed.length === 2
+            );
+
+            renderResumeEntry(
+                resumeTraitThree,
+                revealed[2],
+                'Awaiting third qualification…',
+                revealed.length > previousRevealedCount && revealed.length === 3
+            );
+
+            resumeTwist.classList.remove(
+                'resume-empty',
+                'resume-twist-hidden',
+                'resume-background-check',
+                'reveal-entry'
+            );
+
+            if (twistForCurrent) {
+                resumeTwist.textContent = twistForCurrent;
+                resumeTwist.classList.add('resume-background-check');
+
+                if (!resumeTwist.dataset.revealedFor ||
+                    resumeTwist.dataset.revealedFor !== currentId) {
+                    resumeTwist.dataset.revealedFor = currentId;
+
+                    void resumeTwist.offsetWidth;
+                    resumeTwist.classList.add('reveal-entry');
+                }
+            } else {
+                resumeTwist.textContent = 'Background check pending…';
+                resumeTwist.classList.add('resume-twist-hidden');
+                delete resumeTwist.dataset.revealedFor;
+            }
+
+            previousRevealedCount = revealed.length;
+
+            // Current candidate chooses the order of their traits.
+            if (
+                me === currentId &&
+                Array.isArray(s.myAllTraits)
+            ) {
+                const remaining = s.myAllTraits.filter(
+                    trait => !revealed.includes(trait)
+                );
+
+                revealChoicesWrap.style.display =
+                    remaining.length ? 'block' : 'none';
+
+                revealChoices.innerHTML = '';
+
+                remaining.forEach((trait, index) => {
+                    const card = document.createElement('div');
+
+                    card.className = 'cardlet';
+                    card.textContent = trait;
+                    card.style.animationDelay = `${index * 35}ms`;
+
+                    card.onclick = () => {
+                        socket.emit('revealTrait', trait);
+                    };
+
+                    revealChoices.appendChild(card);
+                });
+            } else {
+                revealChoicesWrap.style.display = 'none';
+                revealChoices.innerHTML = '';
+            }
+
+            // Interviewer controls.
+            if (s.isInterviewer) {
+                stageControls.style.display = 'block';
+
+                const bankVisible =
+                    Array.isArray(s.twistBank) &&
+                    s.twistBank.length > 0 &&
+                    !twistForCurrent;
+
+                twistBankCard.style.display =
+                    bankVisible ? 'block' : 'none';
+
+                assignTwistBtn.style.display =
+                    bankVisible ? 'inline-block' : 'none';
+
+                if (bankVisible) {
+                    renderTwistBank(
+                        s.twistBank,
+                        revealed.length,
+                        twistForCurrent
+                    );
+                } else {
+                    twistBankEl.innerHTML = '';
+                    selectedTwist = null;
+                }
+
+                assignTwistBtn.onclick = () => {
+                    if (!selectedTwist) return;
+
+                    socket.emit('assignTwist', {
+                        targetId: currentId,
+                        twist: selectedTwist
+                    });
+                };
+
+                endTurnBtn.disabled = !twistForCurrent;
+
+                endTurnBtn.onclick = () => {
+                    if (!twistForCurrent || resumeTransitioning) {
+                        return;
+                    }
+
+                    resumeTransitioning = true;
+                    endTurnBtn.disabled = true;
+
+                    stageResume.classList.remove('resume-swap-in');
+                    stageResume.classList.add('resume-exit');
+
+                    window.setTimeout(() => {
+                        socket.emit('endTurn');
+
+                        resumeTransitioning = false;
+                    }, 500);
+                };
+
+                updateAssignState(
+                    revealed.length,
+                    twistForCurrent
+                );
+            } else {
+                stageControls.style.display = 'none';
+            }
+        }
+
+        function renderTwistBank(bank, revealedLen = 0, twistForCurrent = null) {
+            twistBankEl.innerHTML = '';
+            selectedTwist = null;
+            (bank || []).forEach((tw, i) => {
+                const d = document.createElement('div');
+                d.className = 'cardlet small';
+                d.textContent = tw;
+                d.style.animationDelay = `${i * 35}ms`;
+                d.onclick = () => {
+                    const was = d.classList.contains('sel');
+                    [...twistBankEl.children].forEach(c => c.classList.remove('sel'));
+                    if (!was) { d.classList.add('sel'); selectedTwist = tw; } else { selectedTwist = null; }
+                    updateAssignState(revealedLen, twistForCurrent);
+                };
+                twistBankEl.appendChild(d);
+            });
+            updateAssignState(revealedLen, twistForCurrent);
+        }
+
+        function renderLineup(s) {
+            subsEl.innerHTML = '';
+            subsEl.className = 'resume-lineup-grid';
+
+            const entries = Object.values(s.submissions || {});
+
+            if (!entries.length) {
+                subsEl.className = '';
+                subsEl.innerHTML =
+                    '<div class="muted">No candidate resumes yet.</div>';
+                return;
+            }
+
+            entries.forEach((candidate, index) => {
+                const card = document.createElement('article');
+
+                card.className = 'mini-resume';
+                card.style.animationDelay = `${index * 70}ms`;
+
+                const isWinner = !!candidate.winner;
+                const traits = candidate.traits || [];
+
+                card.innerHTML = `
+
+<div class="mini-resume-header">
+
+    <div>
+
+        <h4 class="mini-resume-name">
+            ${candidate.name}
+        </h4>
+
+        <div class="muted">
+            Candidate Resume
         </div>
-        <div class="row" style="margin-top:6px;">${(x.traits||[]).map(c=>`<span class=\"pill\">${c}</span>`).join(' ')}</div>
-        ${twistText}
-      `;
 
-      if(s.isInterviewer && s.phase==='judge' && !x.winner){
-        const b=document.createElement('button'); b.textContent='Pick Winner';
-        b.onclick=()=>socket.emit('selectWinner', x.id);
-        wrap.appendChild(b);
-      }
-      if(isWinner){ wrap.classList.add('winner'); boomConfetti(); }
-      subsEl.appendChild(wrap);
-    });
-  }
+    </div>
 
-  // light confetti
-  const canvas = document.getElementById('confetti');
-  const ctx = canvas.getContext('2d');
-  let bits = []; let rafId;
-  function resize(){ canvas.width=innerWidth; canvas.height=innerHeight; }
-  addEventListener('resize', resize); resize();
-  function boomConfetti(){
-    for(let i=0;i<120;i++){
-      bits.push({
-        x: canvas.width/2 + (Math.random()-0.5)*220,
-        y: canvas.height/3,
-        vx: (Math.random()-0.5)*6,
-        vy: -Math.random()*6 - 2,
-        s: Math.random()*6+3,
-        r: Math.random()*Math.PI,
-        vr: (Math.random()-0.5)*.3,
-        life: 120+Math.random()*60
-      });
-    }
-    if(!rafId) tick();
-  }
-  function tick(){
-    rafId = requestAnimationFrame(tick);
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.save();
-    bits.forEach(b=>{
-      b.life--; if(b.life<=0) return;
-      b.x+=b.vx; b.y+=b.vy; b.vy+=0.12; b.r+=b.vr;
-      ctx.save();
-      ctx.translate(b.x,b.y); ctx.rotate(b.r);
-      ctx.fillStyle = Math.random() < .5 ? "rgba(255,93,177,.9)" : "rgba(125,243,255,.9)";
-      ctx.fillRect(-b.s/2,-b.s/2,b.s,b.s);
-      ctx.restore();
-    });
-    bits = bits.filter(b=>b.life>0 && b.y<canvas.height+20);
-    if(!bits.length){ cancelAnimationFrame(rafId); rafId=null; }
-    ctx.restore();
-  }
-</script>
+    <div class="mini-photo">
+
+        <img
+            class="mini-avatar"
+            src="/images/avatars/${candidate.avatar || "bossbaby.png"}"
+            alt="Avatar">
+
+    </div>
+
+</div>
+
+<div class="mini-section-label">
+    Qualifications
+</div>
+
+${traits.length
+                        ? traits.map(trait =>
+                            `<div class="mini-resume-entry">
+• ${trait}
+</div>`
+                        ).join("")
+                        : `<div class="mini-resume-entry muted">
+Awaiting qualifications…
+</div>`
+                    }
+
+<div class="mini-section-label">
+    Background Check
+</div>
+
+${candidate.twist
+                        ? `<div class="mini-resume-twist">
+${candidate.twist}
+</div>`
+                        : `<div class="mini-resume-entry muted">
+Pending
+</div>`
+                    }
+
+${isWinner
+                        ? `<div class="mini-resume-twist"
+style="
+border-color:#55c877;
+color:#23783c;
+background:#effff3;
+">
+✓ HIRED
+</div>`
+                        : ""
+                    }
+`;
+
+                if (
+                    s.isInterviewer &&
+                    s.phase === 'judge' &&
+                    !isWinner
+                ) {
+                    const button = document.createElement('button');
+
+                    button.textContent = 'Hire Candidate';
+                    button.style.marginTop = '13px';
+
+                    button.onclick = () => {
+                        socket.emit('selectWinner', candidate.id);
+                    };
+
+                    card.appendChild(button);
+                }
+
+                if (isWinner) {
+                    card.classList.add('winner');
+
+                    if (celebratedWinnerId !== candidate.id) {
+                        celebratedWinnerId = candidate.id;
+                        boomConfetti();
+                    }
+                }
+
+                subsEl.appendChild(card);
+            });
+        }
+
+        // light confetti
+        const canvas = document.getElementById('confetti');
+        const ctx = canvas.getContext('2d');
+        let bits = []; let rafId;
+        function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+        addEventListener('resize', resize); resize();
+        function boomConfetti() {
+            for (let i = 0; i < 50; i++) {
+                bits.push({
+                    x: canvas.width / 2 + (Math.random() - 0.5) * 220,
+                    y: canvas.height / 3,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: -Math.random() * 6 - 2,
+                    s: Math.random() * 6 + 3,
+                    r: Math.random() * Math.PI,
+                    vr: (Math.random() - 0.5) * .3,
+                    life: 75 + Math.random() * 35
+                });
+            }
+            if (!rafId) tick();
+        }
+        function tick() {
+            rafId = requestAnimationFrame(tick);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            bits.forEach(b => {
+                b.life--; if (b.life <= 0) return;
+                b.x += b.vx; b.y += b.vy; b.vy += 0.12; b.r += b.vr;
+                ctx.save();
+                ctx.translate(b.x, b.y); ctx.rotate(b.r);
+                ctx.fillStyle = Math.random() < .5 ? "rgba(255,93,177,.9)" : "rgba(125,243,255,.9)";
+                ctx.fillRect(-b.s / 2, -b.s / 2, b.s, b.s);
+                ctx.restore();
+            });
+            bits = bits.filter(b => b.life > 0 && b.y < canvas.height + 20);
+            if (!bits.length) { cancelAnimationFrame(rafId); rafId = null; }
+            ctx.restore();
+
+
+
+
+
+        }
+        restartMatch.onclick = () => {
+            restartMatch.disabled = true;
+            socket.emit("restartMatch");
+        };
+
+        /*
+            Start the connection only after auth-ui.js
+            and all game listeners are registered.
+        */
+        socket.connect();
+
+    </script>
 </body>
 </html>
