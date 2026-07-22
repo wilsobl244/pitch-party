@@ -26,13 +26,18 @@ const io = new Server(server, {
   }
 });
 
+
+const {
+    createChatSystem
+} = require("./chat");
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // ---------- config / guards ----------
 const MAX_ROOMS = 200;
 const MAX_PLAYERS_PER_ROOM = 12;
 const MAX_NAME_LEN = 24;
-const CHAT_COOLDOWN_MS = 1200;
+
 const CREATE_JOIN_COOLDOWN_MS = 1500;
 const ACTION_COOLDOWN_MS = 250; // generic small guard
 const ROOM_IDLE_MS = 45 * 60 * 1000; // 45 min since last activity
@@ -47,12 +52,20 @@ const RECONNECT_GRACE_MS =
 
 const rooms = new Map(); // Map<roomCode, RoomState>
 
+
+const chatSystem = createChatSystem({
+    io,
+    rooms,
+    touchRoom
+});
+
+
 // Permanent browser playerId -> current room/socket information
 const playerSessions = new Map();
 
 
 const lastActionAt = new Map(); // Map<socketId, number>
-const lastChatAt = new Map(); // Map<socketId, number>
+
 const lastCreateJoinAt = new Map(); // Map<socketId, number>
 
 
@@ -79,7 +92,15 @@ function tooSoon(map, id, cooldown) {
   map.set(id, now());
   return false;
 }
-function touchRoom(R) { R.lastActivityAt = now(); }
+function touchRoom(R) {
+    if (!R || typeof R !== "object") {
+        return;
+    }
+
+    R.lastActivityAt = now();
+}
+
+
 function esc(s) { return String(s).replace(/[<>]/g, m => (m === "<" ? "&lt;" : "&gt;")).replace(/[\x00-\x1F]/g, ""); }
 
 
@@ -102,7 +123,10 @@ function cleanGameName(value) {
 
 const VALID_AVATARS = new Set([
     "bossbaby.png",
-    "avatar2.png"
+    "avatar1.png",
+    "avatar2.png",
+    "avatar3.png",
+    "avatar4.png"
 ]);
 
 function cleanAvatar(value) {
@@ -260,15 +284,17 @@ function permanentlyRemovePlayer(
     delete R.twistsAssigned?.[oldSocketId];
     delete R.revealed?.[oldSocketId];
 
-    io.to(code).emit("chat", {
-        name: "SYSTEM",
-        msg: `${who} did not reconnect and left the game.`
-    });
+    chatSystem.emitSystemMessage(
+        code,
+        `${who} did not reconnect and left the game.`
+    );
+
 
     const remainingIds = Object.keys(R.players);
 
     // Delete an empty room.
     if (remainingIds.length === 0) {
+        chatSystem.deleteRoomChat(code);
         rooms.delete(code);
         broadcastRoomList();
         return;
@@ -278,10 +304,10 @@ function permanentlyRemovePlayer(
     if (R.hostId === oldSocketId) {
         R.hostId = remainingIds[0];
 
-        io.to(code).emit("chat", {
-            name: "SYSTEM",
-            msg: `${R.players[R.hostId].name} is the new host.`
-        });
+        chatSystem.emitSystemMessage(
+            code,
+            `${R.players[R.hostId]?.name || "A player"} is the new host.`
+        );
     }
 
     R._order = remainingIds;
@@ -294,12 +320,12 @@ function permanentlyRemovePlayer(
 
         prepareRound(R);
 
-        io.to(code).emit("chat", {
-            name: "SYSTEM",
-            msg:
-                "New round – Interviewer: " +
-                R.players[R.interviewerId].name
-        });
+        chatSystem.emitSystemMessage(
+            code,
+            `New round – Interviewer: ${R.players[R.interviewerId]?.name ||
+            "Unknown"
+            }`
+        );
     }
 
     // If the current candidate never returned, advance the stage.
@@ -681,8 +707,8 @@ function emitGameState(code, toId = null) {
         }
 
         const targetSocketId =
-            forcedSocketId ||
-            player.socketId ||
+            forcedSocketId ??
+            player.socketId ??
             playerKey;
 
         if (!targetSocketId) {
@@ -695,22 +721,10 @@ function emitGameState(code, toId = null) {
         const isCurrent =
             playerKey === curId;
 
-        console.log(
-            "[gameState]",
-            {
-                playerKey,
-                targetSocketId,
-                connected: player.connected,
-                phase: R.phase,
-                currentCandidateId: R.currentCandidateId,
-                currentTwist:
-                    R.currentCandidateId
-                        ? R.twistsAssigned[
-                        R.currentCandidateId
-                        ]
-                        : null
-            }
-        );
+      
+
+
+
 
         io.to(targetSocketId).emit("gameState", {
             ...pub,
@@ -730,14 +744,9 @@ function emitGameState(code, toId = null) {
                     : undefined,
 
             twistBank:
-                (
-                    isInterviewer &&
-                    R.phase === "reveal" &&
-                    !curTwist &&
-                    twistBank.length > 0
-                )
+                isInterviewer
                     ? twistBank
-                    : undefined,
+                    : [],
 
             hand:
                 (
@@ -820,7 +829,9 @@ function refillTwistChoices(R, amount = 3) {
 
 
 function prepareRound(R) {
-  const ids = Object.keys(R.players);
+    const ids = Object.keys(R.players).filter(
+        id => R.players[id]
+    );
   if (ids.length === 0) return;
 
   // seating/order (join order)
@@ -867,18 +878,36 @@ function prepareRound(R) {
 
 
   // deal 6 traits to each candidate (interviewer gets none)
-  ids.forEach((id) => {
-    if (id === R.interviewerId) {
-      R.players[id].hand = [];
-    } else {
-      const hand = [];
-      for (let i = 0; i < 6; i++) {
-        if (R.deck.traits.length === 0) R.deck.traits = baseTraits();
-        hand.push(R.deck.traits.pop());
-      }
-      R.players[id].hand = hand;
-    }
-  });
+    // deal 6 traits to each candidate (interviewer gets none)
+    ids.forEach((id) => {
+
+        const player = R.players[id];
+
+        if (!player) return;
+
+        if (id === R.interviewerId) {
+
+            player.hand = [];
+
+        } else {
+
+            const hand = [];
+
+            for (let i = 0; i < 6; i++) {
+
+                if (R.deck.traits.length === 0) {
+                    R.deck.traits = baseTraits();
+                }
+
+                hand.push(R.deck.traits.pop());
+
+            }
+
+            player.hand = hand;
+
+        }
+
+    });
 
   touchRoom(R);
 }
@@ -923,6 +952,7 @@ setInterval(() => {
               playerSessions.delete(playerId);
           }
 
+          chatSystem.deleteRoomChat(code);
           rooms.delete(code);
       }
   }
@@ -935,6 +965,8 @@ io.on("connection", (socket) => {
     socket.data.gameName = null;
    
     socket.data.authenticated = false;
+
+    chatSystem.registerSocket(socket);
 
 
     async function attachAccount(account, token) {
@@ -996,7 +1028,7 @@ io.on("connection", (socket) => {
             account.id;
 
         socket.data.gameName =
-            R.players[socket.id].name;
+            R.players[socket.id]?.name ?? null;
 
         socket.join(session.roomCode);
 
@@ -1006,7 +1038,7 @@ io.on("connection", (socket) => {
             room: session.roomCode,
             isHost: R.hostId === socket.id,
             phase: R.phase,
-            name: R.players[socket.id].name
+            name: R.players[socket.id]?.name ?? "Player"
         });
 
         emitLobby(session.roomCode);
@@ -1243,7 +1275,11 @@ io.on("connection", (socket) => {
       isPrivate,
       passHash,
       createdAt: now(),
-      lastActivityAt: now(),
+        lastActivityAt: now(),
+
+        chatMessages: [],
+
+
       // game state
       phase: "lobby",
       round: 0,
@@ -1281,10 +1317,17 @@ io.on("connection", (socket) => {
                 disconnectTimer: null
             }
         );
+        socket.emit("roomCreated", {
+            room
+        });
 
-        socket.emit("roomCreated", { room });
-    emitLobby(room);
-    broadcastRoomList();
+        chatSystem.emitSystemMessage(
+            room,
+            `${displayName} created the party.`
+        );
+
+        emitLobby(room);
+        broadcastRoomList();
   });
 
   // join room
@@ -1416,8 +1459,16 @@ io.on("connection", (socket) => {
             isHost: socket.id === R.hostId
         });
 
+        chatSystem.emitSystemMessage(
+            roomCode,
+            `${displayName} joined the party.`
+        );
+
         emitLobby(roomCode);
         broadcastRoomList();
+
+
+       
   });
 
   // list rooms
@@ -1514,11 +1565,20 @@ io.on("connection", (socket) => {
     if (unique.size !== 3) return;
     if (!picks.every((t) => typeof t === "string")) return;
 
-    const hand = R.players[socket.id]?.hand || [];
+      const player = R.players[socket.id];
+
+      if (!player) {
+          socket.emit("gameError", "Player not found.");
+          return;
+      }
+
+      const hand = player.hand || [];
+
+
     if (!picks.every((t) => hand.includes(t))) return;
 
     // remove from hand to lock
-    R.players[socket.id].hand = hand.filter((c) => !picks.includes(c));
+      player.hand = hand.filter((c) => !picks.includes(c));
     R.submissions[socket.id] = { traits: picks, winner: false };
 
     // when all candidates submit, move on to REVEAL (spotlight) phase
@@ -1542,11 +1602,23 @@ io.on("connection", (socket) => {
     const R = rooms.get(room);
     if (!R || R.phase !== "reveal") return;
 
-    const pid = socket.id;
-    if (pid !== R.currentCandidateId) return; // only current candidate can reveal
+      const pid = socket.id;
 
-    const sub = R.submissions[pid];
-    if (!sub) return;
+      if (!R.players[pid]) {
+          return;
+      }
+
+      if (pid !== R.currentCandidateId) {
+          return;
+      }
+
+      const sub = R.submissions[pid];
+
+      if (!sub) {
+          return;
+      }
+
+
     if (typeof trait !== "string") return;
 
     const myTraits = sub.traits || [];
@@ -1641,18 +1713,41 @@ io.on("connection", (socket) => {
     if (socket.id !== R.interviewerId) return;
       const pid = R.currentCandidateId;
 
+     
+
       if (!pid) {
-          socket.emit("gameError", "There is no candidate currently on stage.");
+          socket.emit(
+              "gameError",
+              "There is no candidate currently on stage."
+          );
           return;
       }
 
-      if (!R.twistsAssigned[pid]) {
+      if (!R.players?.[pid]) {
+          socket.emit(
+              "gameError",
+              "The current candidate is no longer in the room."
+          );
+          return;
+      }
+
+      if (!R.submissions?.[pid]) {
+          socket.emit(
+              "gameError",
+              "The current candidate's submission no longer exists."
+          );
+          return;
+      }
+
+      if (!R.twistsAssigned?.[pid]) {
           socket.emit(
               "gameError",
               "Assign a twist before ending the candidate's turn."
           );
           return;
       }
+
+ 
 
     R.stageIndex++;
     if (R.stageIndex >= R.stageOrder.length) {
@@ -1662,7 +1757,7 @@ io.on("connection", (socket) => {
     } else {
         R.currentCandidateId = R.stageOrder[R.stageIndex];
 
-        refillTwistChoices(R);
+        refillTwistChoices(R, 3);
     }
 
     touchRoom(R);
@@ -1703,7 +1798,10 @@ io.on("connection", (socket) => {
 
     touchRoom(R);
     emitGameState(room);
-    io.to(room).emit("chat", { name: "SYSTEM", msg: `${R.players[winnerId]?.name || "Someone"} wins the round!` });
+      chatSystem.emitAnnouncement(
+          room,
+          `${R.players[winnerId]?.name || "Someone"} wins the round!`
+      );
   });
 
   // next round (interviewer only)
@@ -1761,10 +1859,12 @@ io.on("connection", (socket) => {
 
         prepareRound(R);
 
-        io.to(room).emit("chat", {
-            name: "SYSTEM",
-            msg: `Round ${R.round} – Interviewer: ${R.players[R.interviewerId].name}`
-        });
+        chatSystem.emitSystemMessage(
+            room,
+            `Round ${R.round} – Interviewer: ${R.players[R.interviewerId]?.name ||
+            "Unknown"
+            }`
+        );
 
         emitGameState(room);
         broadcastRoomList();
@@ -1798,10 +1898,11 @@ io.on("connection", (socket) => {
 
         prepareRound(R);
 
-        io.to(room).emit("chat", {
-            name: "SYSTEM",
-            msg: "A new match has begun!"
-        });
+
+        chatSystem.emitAnnouncement(
+            room,
+            "A new match has begun!"
+        );
 
         emitLobby(room);
         emitGameState(room);
@@ -1842,10 +1943,10 @@ io.on("connection", (socket) => {
 
         if (leavingDuringGame) {
 
-            io.to(room).emit("chat", {
-                name: "SYSTEM",
-                msg: `${playerName} left the game.`
-            });
+            chatSystem.emitSystemMessage(
+                room,
+                `${playerName} left the game.`
+            );
 
         }
 
@@ -1887,10 +1988,10 @@ io.on("connection", (socket) => {
 
                 R.hostId = ids[0];
 
-                io.to(room).emit("chat", {
-                    name: "SYSTEM",
-                    msg: `${R.players[R.hostId].name} is now the host.`
-                });
+                chatSystem.emitSystemMessage(
+                    room,
+                    `${R.players[R.hostId]?.name || "A player"} is now the host.`
+                );
 
             } else {
 
@@ -1941,13 +2042,15 @@ io.on("connection", (socket) => {
                 R.currentCandidateId =
                     R.stageOrder[R.stageIndex];
 
-                refillTwistChoices(R);
+                refillTwistChoices(R, 3);
 
             }
 
         }
 
         if (Object.keys(R.players).length === 0) {
+
+            chatSystem.deleteRoomChat(room);
 
             rooms.delete(room);
 
@@ -1978,20 +2081,6 @@ io.on("connection", (socket) => {
     });
 
 
-  // simple chat
-  socket.on("chat", (msg) => {
-    if (tooSoon(lastChatAt, socket.id, CHAT_COOLDOWN_MS)) return;
-    const room = getMyRoom();
-    if (!room) return;
-    const R = rooms.get(room);
-    if (!R) return;
-
-    const from = R.players[socket.id]?.name || "Player";
-    const safeMsg = esc(String(msg).slice(0, 300));
-    touchRoom(R);
-    io.to(room).emit("chat", { name: from, msg: safeMsg });
-  });
-
 
    
 
@@ -2003,7 +2092,7 @@ io.on("connection", (socket) => {
 
         function clearRateLimits() {
             lastActionAt.delete(socket.id);
-            lastChatAt.delete(socket.id);
+
             lastCreateJoinAt.delete(socket.id);
         }
 
@@ -2042,12 +2131,11 @@ io.on("connection", (socket) => {
             "Player";
 
 
-        io.to(session.roomCode).emit("chat", {
-            name: "SYSTEM",
-            msg:
-                `${disconnectedName} disconnected. ` +
-                "Waiting up to 90 seconds for them to reconnect…"
-        });
+        chatSystem.emitSystemMessage(
+            session.roomCode,
+            `${disconnectedName} disconnected. ` +
+            "Waiting up to 90 seconds for them to reconnect…"
+        );
 
         if (session.disconnectTimer) {
             clearTimeout(session.disconnectTimer);
